@@ -1,28 +1,38 @@
 ---
 title: "Mitigating Bias in AI Algorithms: A Healthcare Guide to Threshold Adjustment"
-subtitle: "Annotated Code"
-author: "NYC Health + Hospitals"
 date: "`r Sys.Date()`"
-output: html_document
+output: github_document
+always_allow_html: true
+code_folding: show
 ---
+
+```{r options, echo=FALSE}
+knitr::opts_chunk$set(warning=FALSE, message=FALSE)
+```
+
+```{r logo, echo=FALSE, out.width='50%'}
+knitr::include_graphics("NYCHH_logo_CMYK.png")
+```
 
 # Introduction
 
-The annotated code presented here is meant to accompany our detailed playbook, "Mitigating Bias in AI Algorithms: A Healthcare Guide to Threshold Adjustment." This resource is the fruit of collaboration across NYC Health + Hospitals (NYC H+H), a safety net healthcare system serving >1 million low-income patients; New York University’s Center for Health Data Science; and Grossman School of Medicine’s Department of Population Health. With funding from Schmidt Futures and Rockefeller Philanthropy Advisors, we assessed and mitigated bias in the predictive algorithms live in our EMR. We present our step-by-step analysis approach here in the hopes that it will empower other systems, particularly those under-resourced, to tackle algorithmic bias as an ongoing and essential piece of high-quality care.
+The annotated code presented here is meant to accompany our detailed playbook, which aims to address the gap in accessible, practical tools for mitigating algorithmic bias by illustrating a simple method of threshold adjustment that can improve the fairness of both commercial and in-house algorithms. The playbook pairs concrete, real-world examples with an annotated code repository. This resource is the fruit of collaboration across NYC Health + Hospitals (H+H), a safety net healthcare system serving >1 million low-income patients; New York University’s Center for Health Data Science; and Grossman School of Medicine’s Department of Population Health. With funding from Schmidt Futures and Rockefeller Philanthropy Advisors, we assessed and mitigated bias in predictive algorithms live in our EMR. We hope that the step-by-step process in this playbook will empower other low-resource systems to tackle algorithmic bias as an ongoing and essential piece of high-quality care.  
+
+[Step 1: Prepare]  
+[Step 2: Assess Bias]  
+[Step 3: Mitigate Bias]  
+[Step 4: Assess Mitigation Success]  
 ________________________________________________________________________________
 
 # Step 1: Prepare
 
-See playbook for details on Step 1, with overall steps as follow: 
-
-* Select an algorithm for bias assessment and mitigation. 
-* Choose your classes (race/ethnicity, gender, etc.).
-* Identify how the algorithm is used clinically ("use case").
-* Identify what thresholds are important to your system.
-* Prepare your dataset: predictions, outcomes, and classes
-      
-```{r setup, warning=FALSE, message=FALSE}
-# First, setup your environment: 
+```{r step1, echo=FALSE, out.width='100%'}
+knitr::include_graphics("step1.png")
+```
+   
+```{r setup}
+# Setup your environment by loading the following libraries. 
+# They may need to be installed first if they are not already: 
 library(tidyverse) 
 library(ROCR) 
 library(janitor)
@@ -46,54 +56,51 @@ library(pROC)
 library(reader)
 ```
 
-## Ingredient # 1: Dataset
-There are two ways to pull your dataset: a database query or a flat file. Either way, your data must contain the following columns, at minimum:
-* 'ID' (unique ID)
-* 'SCORE' (probability (risk score) between 0 and 1)
-* 'OUTCOME' (binarized outcome, where 1 is the outcome we are trying to predict occurred)
-*  Any "Sensitive Variables" you want to assess for bias. Here, we use the following: 'RACE','SEX', 'AGE_CAT', 'language', 'insurance'
+## Get Your Data
+There are two ways to pull your dataset.  
 
-(1) You can connect to your system's database:
-#```{r connect}
-# Connect to your database:
-# con <- dbConnect(odbc::odbc(), "SQLOPHW; Database=DataCore", timeout = 10)
-#```
-and query your data:
-#```{sql connection=con, output.var = "BIA", warning=FALSE}
-# select * 
-# FROM [DataCore].[DR].[BIA_PredictiveModelScoresAndDemographics]
-#```
-(2) You can connect to a csv flat file, as follows:
-```{r csv, warning = FALSE, message=FALSE}
-# We call our dataset 'BIA' for Bias In Algorithms
-BIA <- read_csv("Synthetic Data for Bias Mitigation.xlsb.csv")
+(1) Connect to your system's database. We suggest using an ODBC connection and DBI interface with a SQL query. This is our preferred method, as it does not require saving any PHI locally, but for the purposes of this playbook, we are using option 2: 
+
+(2) Connect to a csv flat file, as follows:
+```{r csv}
+# We're calling our dataset 'BIA' for Bias In Algorithms. You can call yours 
+# whatever you like, but if you do change it, be sure to replace all other 
+# occurrences of 'BIA' in the code with your new name
+BIA <- read_csv("Synthetic Data for Bias Mitigation.xlsb.csv") # Replace with your file name
 ```
+## Clean Your Data
+Your data needs to contain the following columns:  
+* 'id' (unique ID)  
+* 'proba' (probability (risk score) between '0' and '1')  
+* 'outcome' (binary outcome, where '1' is the outcome we are trying to predict and '0' is the absence of that outcome)  
+*  and the sensitive variables you want to assess for bias. We're using 'race','sex', 'age_cat', 'language', and 'insurance'   
 
+If you need to rename any variables, do so now. 
 ```{r tidy}
 # Clean up your data so that your probability variable is 'proba' and your outcome variable is 'label_value'
 # Rename any of your sensitive variables how you'd like. For us, that's updating our insurance and age names: 
-BIA = janitor::clean_names(BIA) %>%
-  rename(proba = score,
-         label_value = outcome,
-         insurance = insurance,
-         age = age_category)
+BIA = janitor::clean_names(BIA) %>% #we're making all variable names lowercase
+  rename(proba = score, #and renaming our score variable as 'proba',
+         insurance = financial_class, #our financial_class variable as 'insurance',
+         label_value = outcome, #our outcome variable as 'label_value', and
+         age = age_category) #our age_category variable as 'age'
 ```
 
+Check to make sure your outcome variable is binary. If it's not, combine outcome categories so that it is. 
 ```{r binary}
-##### We need our outcomes to be binary, so let's check:
 categories <- unique(BIA$label_value) 
 print(categories)
 ```
-Great, we have two outcome values. We can proceed. 
+Great, we have two outcome values. We can proceed! 
 
-## Ingredient #2: Sensitive Variables
+## Define Your Sensitive Variables
 
 ```{r attributes}
-# List variables (must be categorical) of interest here by their column names used in the above data frame.
-sensitive = list('race', 'sex', 'age', 'language', 'insurance')
+# List categorical variables of interest here by their column names in the above data frame.
+sensitive = list('race', 'sex', 'age', 'language', 'insurance') # replace variables of interest as needed
 ```
 
-### Review 'n' counts to identify subgroups comprising less than 1% of the population (too small for independent analysis) and make decisions about combining accordingly:
+Review 'n' counts to identify subgroups comprising less than 1% of the population
 
 ```{r sizes}
 knitr::kable(lapply(sensitive, function(s){
@@ -101,27 +108,27 @@ knitr::kable(lapply(sensitive, function(s){
 }), caption = "Subgroup counts")
 ```
 
-### All subgroups comprise >1% so we can proceed, but if they did not, this would be the step where we logically combine groups or drop those too small for analysis. 
+All subgroups comprise >1% so we can proceed, but if they did not, this would be the step where we logically combine groups or drop those too small for independent analysis. 
 
-## Ingredient #3: Thresholds
+## Establish Thresholds
 
-#### After a review of model documentation and interviews with clinicians, set your thresholds. For us, the following thresholds were identified:
+After a review of model documentation and interviews with clinicians, set your thresholds. For us, the following thresholds were identified:
 
 * Low risk: 0%-7.9%
 * Med risk: 8%-14.9%
 * High risk: 15%-100%
 
 ```{r thresholds}
-# Specify thresholds as values between 0 and 1:
-thresholds = c(0.08, 0.15) 
+# Specify threshold(s) as values between 0 and 1:
+thresholds = c(0.08, 0.15) #you only need one threshold, but if you are considering your options or evaluating low, high, and medium risk thresholds, you can list multiple cutoffs at this stage
 ```
 
 ________________________________________________________________________________
 
 # Step 2: Assess Bias
-* Assess overall model performance: AUROC, PR-AUC, calibration curves.
-* Assess model performance within classes: AUROC, calibration curves.
-* Assess bias by class: Equal Opportunity, Predictive Parity.
+```{r step2, echo=FALSE, out.width='100%'}
+knitr::include_graphics("step2.png")
+```
 
 ## Probability distributions:
 Distributions of the probability of the outcome with thresholds output as vertical lines.
@@ -138,7 +145,7 @@ lapply(sensitive, function(s){
 ## Overall Model Performance: AUROC, PR-AUC, Calibration Curves
 
 ```{r, warning=FALSE, message=FALSE}
-# First, define some helper functions. The below will help us output: (1) ROC with thresholds highlighted as dots, (2) Precision-recall curve with thresholds highlighted as dots, (3) Calibration curve with thresholds highlighted as vertical lines.
+# First, define some helper functions. The below will help us output: (1) ROC with thresholds highlighted as dots, (2) PreCIsion-recall curve with thresholds highlighted as dots, (3) Calibration curve with thresholds highlighted as vertical lines.
 
 #### Area under curve with trapezoid 
 helper.trapezoid <- function(df) {
@@ -180,7 +187,7 @@ analytic.calc_roc = function(predictions, labels, group_name = NA_character_){
                 roc = list(plot.roc)))
 }
 
-#### Precision-recall curve and area under
+#### PreCIsion-recall curve and area under
 analytic.calc_prc = function(predictions, labels, group_name = NA_character_){
   if(length(unique(labels)) == 1){
     ## shortcut to return nothing.
@@ -193,18 +200,18 @@ analytic.calc_prc = function(predictions, labels, group_name = NA_character_){
   perf_npv = ROCR::performance(pred, "npv", 'rpp') 
   
   plot.prc = tibble(cutoff = perf@alpha.values[[1]],
-                    precision.raw = perf@y.values[[1]],
+                    preCIsion.raw = perf@y.values[[1]],
                     recall = perf@x.values[[1]],
                     npv = perf_npv@y.values[[1]],
                     alert_rpp = perf_npv@x.values[[1]]) %>% 
     arrange(cutoff) %>% 
-    mutate(precision = cummax(precision.raw) ) %>% 
-    select(cutoff, precision, recall, precision.raw, npv, alert_rpp) %>% 
+    mutate(preCIsion = cummax(preCIsion.raw) ) %>% 
+    select(cutoff, preCIsion, recall, preCIsion.raw, npv, alert_rpp) %>% 
     arrange(desc(cutoff))
   if(!is.na(group_name)){
     plot.prc = plot.prc %>% mutate(group = group_name)
   }else{plot.prc = plot.prc %>% mutate(group = 'total')}
-  res.auprc <- helper.trapezoid(plot.prc %>% select(x = recall, y = precision))
+  res.auprc <- helper.trapezoid(plot.prc %>% select(x = recall, y = preCIsion))
   return(tibble(group = group_name,
                 auprc = res.auprc, 
                 prc = list(plot.prc)) )
@@ -236,7 +243,7 @@ analytic.form_ntiles = function(df, group_var = NA, groups = 10, z = 1.96, perce
   total.roc = analytic.calc_roc(BIA$proba, BIA$label_value)
   writeLines(glue::glue('Area under the ROC curve is: {round(100*first(total.roc$auroc), 2)}%'))
   total.prc = analytic.calc_prc(BIA$proba, BIA$label_value)
-  writeLines(glue::glue('Area under the Precision-Recall curve for is: {round(100*first(total.prc$auprc), 2)}%'))
+  writeLines(glue::glue('Area under the PreCIsion-Recall curve for is: {round(100*first(total.prc$auprc), 2)}%'))
   temp.a = total.roc %>% pull(roc) %>% bind_rows()
   a = temp.a %>% 
     ggplot(aes(x = fpr, y = tpr, color = group)) + 
@@ -249,13 +256,13 @@ analytic.form_ntiles = function(df, group_var = NA, groups = 10, z = 1.96, perce
   
 temp.b = total.prc %>% pull(prc) %>% bind_rows() 
 b = temp.b %>%
-  ggplot(aes(x = recall, y = precision, color = group)) + 
+  ggplot(aes(x = recall, y = preCIsion, color = group)) + 
   geom_vline(xintercept = c(0, 1)) + 
   geom_hline(yintercept = c(0, 1)) + 
   geom_hline(data = temp.b %>% arrange(cutoff) %>% group_by(group) %>% slice(1) %>% ungroup(),
-             mapping = aes(yintercept = precision),
+             mapping = aes(yintercept = preCIsion),
              color = 'grey50', linetype = 'dashed') + 
-  geom_point(inherit.aes = T, mapping = aes(y = precision.raw), size = 1, alpha = 0.1) + 
+  geom_point(inherit.aes = T, mapping = aes(y = preCIsion.raw), size = 1, alpha = 0.1) + 
   geom_line(size = 1.5) + 
   geom_point(data = lapply(thresholds, function(t){temp.b %>% arrange(desc(cutoff)) %>% filter(cutoff <= t) %>% slice(1)}) %>% bind_rows(), 
              mapping = aes(fill = group), size = 3, stroke = 0.8, pch = 21, color = 'grey20') + 
@@ -282,7 +289,7 @@ c = analytic.form_ntiles(BIA, groups =10) %>%
 
 * Keep in mind, disparities in AUROC suggest the model functions ("discriminates", in the good sense) better or worse for some subgroups (e.g., due to representation within the data, availability of data, etc.) and PR-AUC is swayed by outcome prevalence, so expect groups with higher outcome rates to have higher PR-AUCs.
 
-```{r sensitive_variables, echo=FALSE, warning=FALSE, message=FALSE}
+```{r sensitive_variables, warning=FALSE, message=FALSE}
 performances = lapply(sensitive, function(s){
   print(s)
     g = BIA %>% group_by_(s)
@@ -329,12 +336,12 @@ performances = lapply(sensitive, function(s){
       ggtitle(glue::glue("ROC Curve")) 
     
     b = temp.b %>%
-      ggplot(aes(x = recall, y = precision, color = group)) + 
+      ggplot(aes(x = recall, y = preCIsion, color = group)) + 
       geom_vline(xintercept = c(0, 1)) + geom_hline(yintercept = c(0, 1)) + 
       geom_hline(data = . %>% arrange(cutoff) %>% group_by(group) %>% slice(1) %>% ungroup(),
-                 mapping = aes(yintercept = precision, color = group), #color = 'grey50'
+                 mapping = aes(yintercept = preCIsion, color = group), #color = 'grey50'
                  linetype = 'dashed') + 
-      geom_point(inherit.aes = T, mapping = aes(y = precision.raw), size = 1, alpha = 0.1) + 
+      geom_point(inherit.aes = T, mapping = aes(y = preCIsion.raw), size = 1, alpha = 0.1) + 
       geom_line(size = 1.5) + 
       geom_point(data = local, 
                  mapping = aes(fill = group), size = 2, stroke = 0.8, pch = 21, color = 'grey20') + 
@@ -391,7 +398,7 @@ CIs = lapply(sensitive, function(s){
         ) %>% 
         mutate(prev_percent = (round((pos/total) * 100, digits=4)), 
                alert_rate = pp/total, 
-               ppv_precision = tp/pp, ppv_ci = binom.confint(tp, pp, method = 'ac')[4:6], # adds a mean, lower, and upper dataframe inside the dataframe.
+               ppv_preCIsion = tp/pp, ppv_ci = binom.confint(tp, pp, method = 'ac')[4:6], # adds a mean, lower, and upper dataframe inside the dataframe.
                npv = tn/pn, 
                tpr_recall_sensitivity = tp/(pos), tpr_ci = binom.confint(tp, pos, method = 'ac')[4:6],
                tnr_specificity = tn/(neg), 
@@ -402,7 +409,7 @@ CIs = lapply(sensitive, function(s){
   }) %>% bind_rows()
 ```
 
-```{r check, warning = FALSE, echo=FALSE}
+```{r check, warning = FALSE}
 #### Then we create function to help with our bias check
 bias_check = function(l_perfs, variable_colname, group_colname, reference_group, p_threshold = 0.05, fairness_metric="not FNR"){
   if(!(variable_colname %in% colnames(l_perfs)) ){warning(glue::glue("Could not find the supplied variable column named={variable_colname}")); return(FALSE)}
@@ -524,7 +531,7 @@ CIs %>% filter(!is.na(insurance), threshold == 0.15) %>%
 * "avg_pop_adj" = absolute value of the average of the differences between every subgroup and the reference group's fairness metric in a given class, adjusted for population size by multiplying each subgroup's absolute value of the difference from the reference group's fairness metric by that subgroup's size, adding them together, and dividing by the size of the total population (including referent group)
 * "five_pp" = percent of sub-groups with an absolute difference from reference group's fairness metric greater than 5% (5 percentage points) 
 
-```{r output_tables, echo=FALSE}
+```{r output_tables2}
 bias_output = tibble(
   class = c("race", "sex", "language", "insurance"),
   big = c(
@@ -572,12 +579,13 @@ _____________________________________________________________________________
 
 # Step 3: Mitigate Bias
 
-* Identify group-specific thresholds to maximize fairness.
-* Adjust thresholds for subgroups for mitigation assessment.
+```{r step3, echo=FALSE, out.width='100%'}
+knitr::include_graphics("step3.png")
+```
 
 #### Let's find subgroup-specific thresholds that move their FNR's as close as possible to the FNR of our reference group: 
 
-```{r find_thresholds, echo=FALSE, message=FALSE, warning=FALSE}
+```{r find_thresholds, message=FALSE, warning=FALSE}
 # Function to calculate FNR
 calculate_fnr <- function(predicted, actual, threshold) {
   predictions <- ifelse(predicted >= threshold, 1, 0)
@@ -677,10 +685,12 @@ flips
 
 # Step 4: Assess Mitigation Success
 
-* Evaluate bias reduction in target class: compare fairness metrics pre- and post-mitigation by sub-group. 
-* Examine impact of mitigation on overall accuracy, alert rate, and remaining bias among other sociodemographic classes.
+```{r step4, echo=FALSE, out.width='100%'}
+knitr::include_graphics("step4.png")
+```
 
-```{r echo=FALSE, warning=FALSE, message=FALSE}
+```{r warning=FALSE, message=FALSE}
+#### Let's look at confusion matrix values for every subgroup of all our classes. 
 calculate_metrics <- function(data) {
   tp <- sum(data$label_value == 1 & data$new_label == 1)
   tn <- sum(data$label_value == 0 & data$new_label == 0)
@@ -713,9 +723,8 @@ metrics_by_insurance <- BIA %>%
   group_by(insurance) %>%
   summarise(metrics = list(calculate_metrics(cur_data()))) %>%
   unnest_wider(metrics)
-```
 
-```{r echo=FALSE, warning=FALSE, message=FALSE}
+#### We also want to be able to compare them to baseline
 calculate_baseline <- function(data) {
   tp <- sum(data$label_value == 1 & data$old_label == 1)
   tn <- sum(data$label_value == 0 & data$old_label == 0)
@@ -750,7 +759,7 @@ metrics_by_insurance_baseline <- BIA %>%
   unnest_wider(metrics)
 ```
 
-```{r echo=FALSE,warning=FALSE,message=FALSE}
+```{r warning=FALSE,message=FALSE}
 # Print the results
 knitr::kable(metrics_by_race, caption = "Race adjusted")
 knitr::kable(metrics_by_race_baseline, caption = "Race baseline")
@@ -762,8 +771,8 @@ knitr::kable(metrics_by_insurance, caption = "Insurance adjusted")
 knitr::kable(metrics_by_insurance_baseline, caption = "Insurance baseline")
 ```
 
-```{r echo=FALSE, warning=FALSE,message=FALSE}
-#summarize baseline and adjusted BIA overall
+```{r warning=FALSE,message=FALSE}
+# We also want to compare baseline and adjusted overall metrics, at the model level
 BIA_baseline = BIA %>% 
         summarize(total = n(), 
                   pos = sum(label_value), neg = total - pos, # actual positive and actual negative
@@ -774,7 +783,7 @@ BIA_baseline = BIA %>%
         ) %>% 
         mutate(prev_percent = (round((pos/total) * 100, digits=4)),
                alert_rate = pp/total, 
-               ppv_precision = tp/pp,
+               ppv_preCIsion = tp/pp,
                npv = tn/pn, 
                tpr_recall_sensitivity = tp/(pos),
                tnr_specificity = tn/(neg), 
@@ -791,7 +800,7 @@ BIA_adjusted = BIA %>%
         ) %>% 
         mutate(prev_percent = (round((pos/total) * 100, digits=4)), 
                alert_rate = pp/total, 
-               ppv_precision = tp/pp,
+               ppv_preCIsion = tp/pp,
                npv = tn/pn, 
                tpr_recall_sensitivity = tp/(pos),
                tnr_specificity = tn/(neg), 
@@ -799,91 +808,8 @@ BIA_adjusted = BIA %>%
                fnr_type2 = fn/(pos))
 ```
 
-##### DISPARITIES 
-
-```{r echo=FALSE, warning=FALSE, message=FALSE}
-cis = lapply(sensitive, function(s){
-      loc_ci = BIA %>% 
-      group_by_(s) %>% 
-      summarize( 
-                total = n(), 
-                pos = sum(label_value), neg = total - pos, # actual positive and actual negative
-                pp = sum(new_label), pn = total - pp, # predicted P and N where total = P+N
-                tp = sum((new_label + label_value) == 2), fp = pp - tp, # Predicted P = True + False P
-                tn = sum((new_label + label_value) == 0), fn = pn - tn,
-                neg_check = fp + tn, pos_check = tp + fn
-      ) %>% 
-      mutate(prev_percent = (round((pos/total) * 100, digits=4)), 
-               alert_rate = pp/total, 
-               ppv_precision = tp/pp, ppv_ci = binom.confint(tp, pp, method = 'ac')[4:6], 
-               npv = tn/pn, 
-               tpr_recall_sensitivity = tp/(pos), tpr_ci = binom.confint(tp, pos, method = 'ac')[4:6],
-               tnr_specificity = tn/(neg), 
-               fpr_type1 = fp/(neg),
-               fnr_type2 = fn/(pos), fnr_ci = binom.confint(fn, pos, method = 'ac')[4:6] 
-  )
- 
-  }) %>% bind_rows()
-```
-
-```{r check, warning = FALSE, echo=FALSE}
-bias_check = function(l_perfs, variable_colname, group_colname, reference_group, p_threshold = 0.05, fairness_metric="not FNR"){
-
-  
-  if(!(group_colname %in% colnames(l_perfs)) ){warning(glue::glue("Could not find the supplied group column named={group_colname}")); return(FALSE)}
-  if(!(reference_group %in% unlist(l_perfs[group_colname])) ){
-    t_output = paste0(unlist(l_perfs[group_colname]), collapse = ", ")
-    warning(glue::glue("Could not find the reference group={reference_group} specified in the set of values: [{t_output}]"))
-    return(FALSE)
-  }
-  if(!('pos' %in% colnames(l_perfs))){warning("Could not find the # of positive cases in the expected column named=pos"); return(FALSE)}
-  if(!('total' %in% colnames(l_perfs))){warning("Could not find the # of total cases in the expected column named=total"); return(FALSE)}
-  
-  ref = l_perfs[which(unlist(l_perfs[group_colname]) == reference_group), variable_colname][[1]] %>% 
-    bind_cols(l_perfs[which(unlist(l_perfs[group_colname]) == reference_group), c('pos', 'total')] %>% 
-                mutate(prev = pos/total)) # unpack pos and total and calculate prev
-  output = l_perfs[variable_colname][[1]] %>% 
-    bind_cols(l_perfs %>% select(pos, total) %>% mutate(prev = pos/total)) %>% # row order assumed, # unpack pos and total and calculate prev
-    mutate(delta_sign = sign(mean - ref$mean),
-           eod = abs(mean - ref$mean)) %>% 
-    mutate(lower_outside = !between(lower, first(ref$lower), first(ref$upper)),
-           upper_outside = !between(upper, first(ref$lower), first(ref$upper)),
-           outside_ci = lower_outside & upper_outside) %>% 
-    rowwise() %>% # perform following mutate() one row at a time, CRUCIAL to not vectorize the prop.test logic
-    mutate(p_value = prop.test(x=c(pos, ref$pos[1]), n=c(total, ref$total[1]))$p.value,
-           prev_delta_sign = sign(prev - ref$prev[1])) %>% 
-    ungroup() %>% # the ungroup stops the rowwise
-    mutate(difference_check = eod > 0.05) %>%
-    mutate(five_pp_diff = if_else(eod > 0.05, "BIAS", "NO BIAS")) %>% #edit
-    mutate(ci_check = if_else(eod > 0.05 & outside_ci, "BIAS", "NO BIAS")) %>% #edit
-    # apply the third step 
-    mutate(
-      prev_delta_sign = if_else(p_value > p_threshold, 0, prev_delta_sign), # if prevs similar, sign = 0, a fuzzy similar
-      composite_check = case_when( 
-             ci_check == "NO BIAS"| is.na(ci_check) ~ "NO BIAS", # if first two checks are not TRUE -> output FALSE (aka no evidence of bias).
-             # if p > threshold, the prevalences are similar, all we need is a non-overlapping CI from the ci_check 
-             ci_check == "BIAS" & p_value > p_threshold ~ "BIAS", # note the ci_check == TRUE is guaranteed from the above line
-             # if p <= threshold, the prevalences are different, either a contrasting trend or equivalency 
-             p_value <= p_threshold & abs(prev_delta_sign - delta_sign) == if_else(fairness_metric == 'FNR',0,2) ~ "BIAS", 
-             p_value <= p_threshold ~ "NO BIAS", # catch where abs() == 0 or 1
-             TRUE ~ NA # if the logic has a flaw, output NA
-           ),
-           directionality = case_when(
-             p_value <= p_threshold & abs(prev_delta_sign - delta_sign) == if_else(fairness_metric == 'FNR',0,2) ~ TRUE, 
-             p_value <= p_threshold ~ FALSE,
-             TRUE ~ NA))
-  output$group = unlist(l_perfs[group_colname])
-  return(output %>% select(group, everything()) )
-}
-```
-
-#### Now, let's look at disparities in fairness metric values between subgroups and reference groups.
-
-
-##### FALSE NEGATIVE RATES
-
-```{r fnr_combo, echo=FALSE, warning=FALSE, echo=FALSE, message=FALSE}
-FNR_race = cis %>% filter(!is.na(race)) %>% 
+```{r fnr_combo2, warning=FALSE, message=FALSE}
+FNR_race = CIs %>% filter(!is.na(race)) %>% 
   bias_check('fnr_ci', 'race', 'Hispanic', fairness_metric='FNR') %>% 
   select('group','difference_check','outside_ci','directionality','five_pp_diff','ci_check','composite_check', 'mean','lower','upper','pos','total','prev','delta_sign','eod','lower_outside','upper_outside','p_value','prev_delta_sign') 
 knitr::kable(FNR_race, caption = "BIA FNR metrics by race, thresholds adjusted", digits=4) %>%
@@ -891,7 +817,7 @@ knitr::kable(FNR_race, caption = "BIA FNR metrics by race, thresholds adjusted",
   kableExtra::column_spec(2:4, background = "lightgray") %>%
   kableExtra::column_spec(5:7, background = "darkgray")
 
-cis %>% filter(!is.na(race)) %>% 
+CIs %>% filter(!is.na(race)) %>% 
   bias_check('fnr_ci', 'race', 'Hispanic', fairness_metric='FNR') %>% 
   mutate(label = paste0(as.character(round(prev*100, 1)), '%')) %>%
   ggplot(aes(x=group, y = mean, ymin = lower, ymax = upper, color = group)) + 
@@ -900,14 +826,14 @@ cis %>% filter(!is.na(race)) %>%
   ggtitle("BIA FNR by race, thresholds adjusted") +
   geom_text(aes(x=group, y=0, label=label), show.legend=FALSE)
 
-FNR_sex = cis %>% filter(!is.na(sex)) %>% 
+FNR_sex = CIs %>% filter(!is.na(sex)) %>% 
   bias_check('fnr_ci', 'sex', 'Female', fairness_metric='FNR') %>% select('group','difference_check','outside_ci','directionality','five_pp_diff','ci_check','composite_check', 'mean','lower','upper','pos','total','prev','delta_sign','eod','lower_outside','upper_outside','p_value','prev_delta_sign') 
 knitr::kable(FNR_sex, caption = "BIA FNR metrics by sex, thresholds adjusted", digits=4) %>%
   kableExtra::kable_styling() %>%
   kableExtra::column_spec(2:4, background = "lightgray") %>%
   kableExtra::column_spec(5:7, background = "darkgray")
 
-cis %>% filter(!is.na(sex)) %>% 
+CIs %>% filter(!is.na(sex)) %>% 
   bias_check('fnr_ci', 'sex', 'Female', fairness_metric='FNR') %>% 
   mutate(label = paste0(as.character(round(prev*100, 1)), '%')) %>%
   ggplot(aes(x=group, y = mean, ymin = lower, ymax = upper, color = group)) + 
@@ -916,14 +842,14 @@ cis %>% filter(!is.na(sex)) %>%
   ggtitle("BIA FNR by sex, thresholds adjusted") +
   geom_text(aes(x=group, y=0, label=label), show.legend=FALSE)
 
-FNR_language = cis %>% filter(!is.na(language)) %>% 
+FNR_language = CIs %>% filter(!is.na(language)) %>% 
   bias_check('fnr_ci', 'language', 'English', fairness_metric='FNR') %>% select('group','difference_check','outside_ci','directionality','five_pp_diff','ci_check','composite_check', 'mean','lower','upper','pos','total','prev','delta_sign','eod','lower_outside','upper_outside','p_value','prev_delta_sign') 
 knitr::kable(FNR_language, caption = "BIA FNR metrics by primary language, thresholds adjusted", digits=4) %>%
   kableExtra::kable_styling() %>%
   kableExtra::column_spec(2:4, background = "lightgray") %>%
   kableExtra::column_spec(5:7, background = "darkgray")
 
-cis %>% filter(!is.na(language)) %>% 
+CIs %>% filter(!is.na(language)) %>% 
   bias_check('fnr_ci', 'language', 'English', fairness_metric='FNR') %>% 
   mutate(label = paste0(as.character(round(prev*100, 1)), '%')) %>%
   ggplot(aes(x=group, y = mean, ymin = lower, ymax = upper, color = group)) + 
@@ -932,14 +858,14 @@ cis %>% filter(!is.na(language)) %>%
   ggtitle("BIA FNR by primary language, thresholds adjusted") +
   geom_text(aes(x=group, y=0, label=label), show.legend=FALSE)
 
-FNR_insurance = cis %>% filter(!is.na(insurance)) %>% 
+FNR_insurance = CIs %>% filter(!is.na(insurance)) %>% 
   bias_check('fnr_ci', 'insurance', 'Medicaid', fairness_metric='FNR') %>% select('group','difference_check','outside_ci','directionality','five_pp_diff','ci_check','composite_check', 'mean','lower','upper','pos','total','prev','delta_sign','eod','lower_outside','upper_outside','p_value','prev_delta_sign') 
 knitr::kable(FNR_insurance, caption = "BIA FNR metrics by financial class, thresholds adjusted", digits=4) %>%
   kableExtra::kable_styling() %>%
   kableExtra::column_spec(2:4, background = "lightgray") %>%
   kableExtra::column_spec(5:7, background = "darkgray")
 
-cis %>% filter(!is.na(insurance)) %>% 
+CIs %>% filter(!is.na(insurance)) %>% 
   bias_check('fnr_ci', 'insurance', 'Medicaid', fairness_metric='FNR') %>% 
   mutate(label = paste0(as.character(round(prev*100, 1)), '%')) %>%
   ggplot(aes(x=group, y = mean, ymin = lower, ymax = upper, color = group)) + 
@@ -949,12 +875,9 @@ cis %>% filter(!is.na(insurance)) %>%
   geom_text(aes(x=group, y=0, label=label), show.legend=FALSE)
 ```
 
-###########################################################################
 
-#### (2) Here are the measures of disparity we used at baseline, updated with our threshold adjusted data. 
-
-```{r output_tables, echo=FALSE}
-BIA_FNR_output = tibble(
+```{r output_tables}
+adjusted_bias_output = tibble(
   class = c("race", "sex", "language", "insurance"),
   big = c(
     (max(abs(FNR_race$eod))), 
@@ -962,24 +885,18 @@ BIA_FNR_output = tibble(
     (max(abs(FNR_language$eod))), 
     (max(abs(FNR_insurance$eod)))
     ),
-  big_pop_adj = c( #change to pull max adjusted value, not adjusted value of max value
-      max(((((abs(FNR_race$eod))*(FNR_race$total))/(sum(FNR_race$total)))*100000)),
-      max(((((abs(FNR_sex$eod))*(FNR_sex$total))/(sum(FNR_sex$total)))*100000)),
-      max(((((abs(FNR_language$eod))*(FNR_language$total))/(sum(FNR_language$total)))*100000)),
-      max(((((abs(FNR_insurance$eod))*(FNR_insurance$total))/(sum(FNR_insurance$total)))*100000))
-    ),
   avg = c(
-    (sum(FNR_race$eod)/5),
-    (sum(FNR_sex$eod)/1),
-    (sum(FNR_language$eod)/2),
-    (sum(FNR_insurance$eod)/4) #change to divide by 4 not 6
+    (sum(FNR_race$eod)/7), #AUTOMATE
+    (sum(FNR_sex$eod)/1), #AUTOMATE
+    (sum(FNR_language$eod)/2), #AUTOMATE
+    (sum(FNR_insurance$eod)/6) #AUTOMATE
   ),
-  avg_pop_adj = #change to remove filter
+  avg_pop_adj = 
     c(
-    (FNR_race %>% summarize(weighted_sum = sum(eod * total), total_sum = sum(total)) %>% mutate(final_result = weighted_sum / total_sum) %>% pull(final_result)), 
-    (FNR_sex %>% summarize(weighted_sum = sum(eod * total), total_sum = sum(total)) %>% mutate(final_result = weighted_sum / total_sum) %>% pull(final_result)),
-    (FNR_language %>% summarize(weighted_sum = sum(eod * total), total_sum = sum(total)) %>% mutate(final_result = weighted_sum / total_sum) %>% pull(final_result)),
-    (FNR_insurance %>% summarize(weighted_sum = sum(eod * total), total_sum = sum(total)) %>% mutate(final_result = weighted_sum / total_sum) %>% pull(final_result))
+    (FNR_race %>% filter(group != 'Hispanic') %>% summarize(weighted_sum = sum(eod * total), total_sum = sum(total)) %>% mutate(final_result = weighted_sum / total_sum) %>% pull(final_result)), 
+    (FNR_sex %>% filter(group != 'Female') %>% summarize(weighted_sum = sum(eod * total), total_sum = sum(total)) %>% mutate(final_result = weighted_sum / total_sum) %>% pull(final_result)),
+    (FNR_language %>% filter(group != 'English') %>% summarize(weighted_sum = sum(eod * total), total_sum = sum(total)) %>% mutate(final_result = weighted_sum / total_sum) %>% pull(final_result)),
+    (FNR_insurance %>% filter(group != 'Medicaid') %>% summarize(weighted_sum = sum(eod * total), total_sum = sum(total)) %>% mutate(final_result = weighted_sum / total_sum) %>% pull(final_result))
     ),
   five_pp = c(
     (nrow(FNR_race %>% filter(five_pp_diff == "BIAS")))/(nrow(FNR_race %>% filter(eod > 0)))*100,
@@ -987,94 +904,30 @@ BIA_FNR_output = tibble(
     (nrow(FNR_language %>% filter(five_pp_diff == "BIAS")))/(nrow(FNR_language%>% filter(eod > 0)))*100,
     (nrow(FNR_insurance %>% filter(five_pp_diff == "BIAS")))/(nrow(FNR_insurance%>% filter(eod > 0)))*100
     ) 
-  #delete extra rows
 )
 
-BIA_PPV_output = tibble(
-  class = c("race", "sex", "language", "insurance"),
-  big = c(
-    (max(abs(BIA_PPV_race$eod))), 
-    (max(abs(BIA_PPV_sex$eod))), 
-    (max(abs(BIA_PPV_language$eod))), 
-    (max(abs(BIA_PPV_insurance$eod)))
-    ),
-  big_pop_adj = c(
-    max(((((abs(BIA_PPV_race$eod))*(BIA_PPV_race$total))/(sum(BIA_PPV_race$total)))*100000)),
-      max(((((abs(BIA_PPV_sex$eod))*(BIA_PPV_sex$total))/(sum(BIA_PPV_sex$total)))*100000)),
-      max(((((abs(BIA_PPV_language$eod))*(BIA_PPV_language$total))/(sum(BIA_PPV_language$total)))*100000)),
-      max(((((abs(BIA_PPV_insurance$eod))*(BIA_PPV_insurance$total))/(sum(BIA_PPV_insurance$total)))*100000))
-    ),
-  avg = c(
-    (sum(BIA_PPV_race$eod)/5),
-    (sum(BIA_PPV_sex$eod)/1),
-    (sum(BIA_PPV_language$eod)/2),
-    (sum(BIA_PPV_insurance$eod)/4)
-  ),
-  avg_pop_adj = 
-    c(
-    (BIA_PPV_race %>% summarize(weighted_sum = sum(eod * total), total_sum = sum(total)) %>% mutate(final_result = weighted_sum / total_sum) %>% pull(final_result)), 
-    (BIA_PPV_sex %>% summarize(weighted_sum = sum(eod * total), total_sum = sum(total)) %>% mutate(final_result = weighted_sum / total_sum) %>% pull(final_result)),
-    (BIA_PPV_language %>% summarize(weighted_sum = sum(eod * total), total_sum = sum(total)) %>% mutate(final_result = weighted_sum / total_sum) %>% pull(final_result)),
-    (BIA_PPV_insurance %>% summarize(weighted_sum = sum(eod * total), total_sum = sum(total)) %>% mutate(final_result = weighted_sum / total_sum) %>% pull(final_result))
-    ),
-  five_pp = c(
-    (nrow(BIA_PPV_race %>% filter(five_pp_diff == "BIAS")))/(nrow(BIA_PPV_race %>% filter(eod > 0)))*100,
-    (nrow(BIA_PPV_sex %>% filter(five_pp_diff == "BIAS")))/(nrow(BIA_PPV_sex%>% filter(eod > 0)))*100,
-    (nrow(BIA_PPV_language %>% filter(five_pp_diff == "BIAS")))/(nrow(BIA_PPV_language%>% filter(eod > 0)))*100,
-    (nrow(BIA_PPV_insurance %>% filter(five_pp_diff == "BIAS")))/(nrow(BIA_PPV_insurance%>% filter(eod > 0)))*100
-    )
-)
 
-BIA_final_output2 = BIA_FNR_output
-BIA_final_output2 = BIA_final_output2 %>% 
+adjusted_bias_output = adjusted_bias_output %>% 
   mutate(across(where(is.numeric),~ round(.,3))) %>%
   mutate(across(where(is.numeric), ~ ifelse(. == max(.), paste0("<span style='color: red;'>", ., "</span>"), .)))
 
-BIA_final_output3 = BIA_PPV_output
-BIA_final_output3 = BIA_final_output3 %>% 
-  mutate(across(where(is.numeric),~ round(.,3))) %>%
-  mutate(across(where(is.numeric), ~ ifelse(. == max(.), paste0("<span style='color: red;'>", ., "</span>"), .)))
-
-combined_kables <- bind_rows(
-  BIA_final_output2,
-  BIA_final_output3
-)
-
-# Print combined table with a shared title
-knitr::kable(BIA_final_output2, caption = "Measures of Disparity using Equal Opportunity (TPR/FNR)", col.names = c(
+knitr::kable(bias_output, caption = "Measures of Disparity using Equal Opportunity (FNR), post-adjustment", col.names = c(
  "Class",
- "Biggest abs disparity from ref",
- "Biggest abs disparity from ref, pop adj (per 100,000)",
- "Avg disparity from ref",
- "Avg disparity from ref, pop adj",
- "% subgroups with >5% diff from ref"
+ "Biggest Abs EOD",
+ "Abs Avg EOD",
+ "Weighted Abs Avg EOD",
+ "Subgroups with >0.05 Abs EOD (%)"
 )) 
-knitr::kable(BIA_final_output3, caption = "Measures of Disparity using Positive Predictive Values", col.names = c(
- "Class",
- "Biggest abs disparity from ref",
- "Biggest abs disparity from ref, pop adj (per 100,000)",
- "Avg disparity from ref",
- "Avg disparity from ref, pop adj",
- "% subgroups with >5% diff from ref")) 
-  
 ```
-
-#### Codebook: 
-* "big" = absolute value of the biggest difference between a subgroup and the reference group's fairness metric in a given class
-* "big_pop_adj" = absolute value of the biggest difference between a subgroup and the reference group's fairness metric in a given class, adjusted for population size by multiplying by the size of subgroup and dividing by the size of the total population (including the referent group), and multiplying by 100,000 to express as "Bias per 100,000 patients".
-* "avg" = absolute value of the average of the differences between every subgroup and the reference group's fairness metric in a given class
-* "avg_pop_adj" = absolute value of the average of the differences between every subgroup and the reference group's fairness metric in a given class, adjusted for population size by multiplying each subgroup's absolute value of the difference from the reference group's fairness metric by that subgroup's size, adding them together, and dividing by the size of the total population (including referent group)
-
 # To close, let's also check accuracy at baseline and after mitigation 
 
-```{r baseline_accuracy, echo=FALSE}
+```{r baseline_accuracy}
 # Function to calculate accuracy score
 accuracy_score <- function(label_value, old_label, normalize = TRUE, sample_weight = NULL) {
   # Check if label_value and old_label are the same length
   if (length(label_value) != length(old_label)) {
     stop("label_value and old_label must have the same length")
   }
-  
   # Calculate the score
   if (is.matrix(label_value) || is.matrix(old_label)) {
     differing_labels <- rowSums(label_value != old_label)
@@ -1082,7 +935,6 @@ accuracy_score <- function(label_value, old_label, normalize = TRUE, sample_weig
   } else {
     score <- label_value == old_label
   }
-  
   # Calculate the final accuracy score
   if (!is.null(sample_weight)) {
     score <- score * sample_weight
@@ -1092,23 +944,18 @@ accuracy_score <- function(label_value, old_label, normalize = TRUE, sample_weig
     return(if (normalize) mean(score) else sum(score))
   }
 }
-
 # Function to calculate balanced accuracy score
 balanced_accuracy_score <- function(label_value, old_label, sample_weight = NULL, adjusted = FALSE) {
   # Check if label_value and old_label are the same length
   if (length(label_value) != length(old_label)) {
     stop("label_value and old_label must have the same length")
   }
-  
   # Create a confusion matrix
   cm <- table(label_value, old_label)
-  
   # Calculate recall for each class
   recalls <- diag(cm) / rowSums(cm)
-  
   # Calculate balanced accuracy
   balanced_acc <- mean(recalls, na.rm = TRUE)  # Ignore NA values
-  
   if (adjusted) {
     # Adjusted balanced accuracy
     random_acc <- sum(rowSums(cm) * colSums(cm)) / sum(cm)^2
@@ -1117,23 +964,18 @@ balanced_accuracy_score <- function(label_value, old_label, sample_weight = NULL
     return(balanced_acc)
   }
 }
-
 # Use it to get baseline accuracy scores
 baseline_accuracy = accuracy_score(BIA$label_value, BIA$old_label)
 baseline_balanced_accuracy = balanced_accuracy_score(BIA$label_value, BIA$old_label)
-
 print(paste("Baseline Accuracy Score:", baseline_accuracy))
 print(paste("Baseline Balanced Accuracy Score:", baseline_balanced_accuracy))
-```
 
-```{r adjusted_accuracy, echo=FALSE}
 # Function to calculate accuracy score
 accuracy_score <- function(label_value, new_label, normalize = TRUE, sample_weight = NULL) {
   # Check if label_value and new_label are the same length
   if (length(label_value) != length(new_label)) {
     stop("label_value and new_label must have the same length")
   }
-  
   # Calculate the score
   if (is.matrix(label_value) || is.matrix(new_label)) {
     differing_labels <- rowSums(label_value != new_label)
@@ -1141,7 +983,6 @@ accuracy_score <- function(label_value, new_label, normalize = TRUE, sample_weig
   } else {
     score <- label_value == new_label
   }
-  
   # Calculate the final accuracy score
   if (!is.null(sample_weight)) {
     score <- score * sample_weight
@@ -1151,23 +992,18 @@ accuracy_score <- function(label_value, new_label, normalize = TRUE, sample_weig
     return(if (normalize) mean(score) else sum(score))
   }
 }
-
 # Function to calculate balanced accuracy score
 balanced_accuracy_score <- function(label_value, new_label, sample_weight = NULL, adjusted = FALSE) {
   # Check if label_value and new_label are the same length
   if (length(label_value) != length(new_label)) {
     stop("label_value and new_label must have the same length")
   }
-  
   # Create a confusion matrix
   cm <- table(label_value, new_label)
-  
   # Calculate recall for each class
   recalls <- diag(cm) / rowSums(cm)
-  
   # Calculate balanced accuracy
   balanced_acc <- mean(recalls, na.rm = TRUE)  # Ignore NA values
-  
   if (adjusted) {
     # Adjusted balanced accuracy
     random_acc <- sum(rowSums(cm) * colSums(cm)) / sum(cm)^2
@@ -1176,7 +1012,6 @@ balanced_accuracy_score <- function(label_value, new_label, sample_weight = NULL
     return(balanced_acc)
   }
 }
-
 # Use it to get baseline accuracy scores
 adjusted_accuracy = accuracy_score(BIA$label_value, BIA$new_label)
 adjusted_balanced_accuracy = balanced_accuracy_score(BIA$label_value, BIA$new_label)
