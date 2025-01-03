@@ -1,7 +1,7 @@
 Mitigating Bias in AI Algorithms: A Healthcare Guide to Threshold
 Adjustment
 ================
-2025-01-02
+2025-01-03
 
 <img src="NYCHH_logo_CMYK.png" width="50%" />
 
@@ -113,8 +113,10 @@ Great, we have two outcome values. We can proceed!
 
 ## Define Your Sensitive Variables
 
+List categorical variables of interest here by their column names in the
+above data frame.
+
 ``` r
-# List categorical variables of interest here by their column names in the above data frame.
 sensitive = list('race', 'sex', 'age', 'language', 'insurance') # replace variables of interest as needed
 ```
 
@@ -214,10 +216,12 @@ thresholds = c(0.08, 0.15) #you only need one threshold, but if you are consider
 
 <img src="step2.png" width="100%" />
 
-## Probability distributions:
+## Probability Distributions
 
-Distributions of the probability of the outcome with thresholds output
-as vertical lines.
+To orient ourselves to the data, we first look at distributions of the
+probability of the outcome for each subgroup within each class. The
+thresholds we set above are output as vertical lines, so we can get a
+visual sense of how different thresholds flag different subgroups.
 
 ``` r
 lapply(sensitive, function(s){
@@ -252,12 +256,17 @@ lapply(sensitive, function(s){
 
 ![](Threshold-Adjustment-Playbook_files/figure-gfm/probabilities-5.png)<!-- -->
 
-## Overall Model Performance: AUROC, PR-AUC, Calibration Curves
+## Assess Overall Performance
+
+First, we define some helper functions to help us output: (1) Receiver
+Operating Characteristic (ROC) with thresholds highlighted as dots, (2)
+Precision-Recall Curve (PRC) with thresholds highlighted as dots, (3)
+Calibration curve with thresholds highlighted as vertical lines.
 
 ``` r
-# First, define some helper functions. The below will help us output: (1) ROC with thresholds highlighted as dots, (2) PreCIsion-recall curve with thresholds highlighted as dots, (3) Calibration curve with thresholds highlighted as vertical lines.
+# You don't need to edit the parameters in any of the below, just run this chunk to define the functions.
 
-#### Area under curve with trapezoid 
+## Area under curve with trapezoid 
 helper.trapezoid <- function(df) {
   if(!all(c("x", "y") %in% colnames(df))) {
     stop('df must have x and y columns')
@@ -273,7 +282,7 @@ helper.trapezoid <- function(df) {
   return(auc)
 }
 
-#### ROC curve and area under 
+## ROC curve and area under 
 analytic.calc_roc = function(predictions, labels, group_name = NA_character_){
   if(length(unique(labels)) == 1){
     ## shortcut to return nothing.
@@ -297,7 +306,7 @@ analytic.calc_roc = function(predictions, labels, group_name = NA_character_){
                 roc = list(plot.roc)))
 }
 
-#### PreCIsion-recall curve and area under
+## Precision-recall curve and area under
 analytic.calc_prc = function(predictions, labels, group_name = NA_character_){
   if(length(unique(labels)) == 1){
     ## shortcut to return nothing.
@@ -327,7 +336,7 @@ analytic.calc_prc = function(predictions, labels, group_name = NA_character_){
                 prc = list(plot.prc)) )
 }
 
-#### Calibration curves 
+## Calibration curves 
 analytic.form_ntiles = function(df, group_var = NA, groups = 10, z = 1.96, percentile_range = c(0, 1)){
   if(is.na(group_var)){
     df = df %>% mutate(group = 'total')
@@ -349,31 +358,35 @@ analytic.form_ntiles = function(df, group_var = NA, groups = 10, z = 1.96, perce
 }
 ```
 
+Now, we use the above functions to get the AUC, PR-AUC, and Calibration
+Curve for our data.
+
 ``` r
-  total.roc = analytic.calc_roc(BIA$proba, BIA$label_value)
-  writeLines(glue::glue('Area under the ROC curve is: {round(100*first(total.roc$auroc), 2)}%'))
+# Area under
+total.roc = analytic.calc_roc(BIA$proba, BIA$label_value)
+writeLines(glue::glue('Area under the ROC curve is: {round(100*first(total.roc$auroc), 2)}%'))
 ```
 
     ## Area under the ROC curve is: 50.79%
 
 ``` r
-  total.prc = analytic.calc_prc(BIA$proba, BIA$label_value)
-  writeLines(glue::glue('Area under the PreCIsion-Recall curve for is: {round(100*first(total.prc$auprc), 2)}%'))
+total.prc = analytic.calc_prc(BIA$proba, BIA$label_value)
+writeLines(glue::glue('Area under the Precision-Recall curve for is: {round(100*first(total.prc$auprc), 2)}%'))
 ```
 
-    ## Area under the PreCIsion-Recall curve for is: 8.13%
+    ## Area under the Precision-Recall curve for is: 8.13%
 
 ``` r
-  temp.a = total.roc %>% pull(roc) %>% bind_rows()
-  a = temp.a %>% 
-    ggplot(aes(x = fpr, y = tpr, color = group)) + 
-    geom_vline(xintercept = c(0, 1)) + geom_hline(yintercept = c(0, 1)) + 
-    geom_abline(color = 'grey50', linetype = 'dashed') + 
-    geom_line(size = 1.5) + 
-    geom_point(data = lapply(thresholds, function(t){temp.a %>% arrange(desc(cutoff)) %>% filter(cutoff <= t) %>% slice(1)}) %>% bind_rows(), 
-             mapping = aes(fill = group), size = 3, stroke = 0.8, pch = 21, color = 'grey20') + 
-    theme_minimal() + coord_fixed() + ggtitle('AUROC') 
-  
+# ROC
+temp.a = total.roc %>% pull(roc) %>% bind_rows()
+a = temp.a %>% 
+  ggplot(aes(x = fpr, y = tpr, color = group)) + 
+  geom_vline(xintercept = c(0, 1)) + geom_hline(yintercept = c(0, 1)) + 
+  geom_abline(color = 'grey50', linetype = 'dashed') + 
+  geom_line(size = 1.5) + 
+  geom_point(data = lapply(thresholds, function(t){temp.a %>% arrange(desc(cutoff)) %>% filter(cutoff <= t) %>% slice(1)}) %>% bind_rows(), mapping = aes(fill = group), size = 3, stroke = 0.8, pch = 21, color = 'grey20') + theme_minimal() + coord_fixed() + ggtitle('AUROC') 
+
+#PRC
 temp.b = total.prc %>% pull(prc) %>% bind_rows() 
 b = temp.b %>%
   ggplot(aes(x = recall, y = preCIsion, color = group)) + 
@@ -387,13 +400,15 @@ b = temp.b %>%
   geom_point(data = lapply(thresholds, function(t){temp.b %>% arrange(desc(cutoff)) %>% filter(cutoff <= t) %>% slice(1)}) %>% bind_rows(), 
              mapping = aes(fill = group), size = 3, stroke = 0.8, pch = 21, color = 'grey20') + 
   theme_minimal() + coord_fixed() + ggtitle('PR-AUC')
+
+#Calibration
 c = analytic.form_ntiles(BIA, groups =10) %>% 
   ggplot(aes(x = model_prediction_mean, y = label_mean, color = group)) + 
   #facet_grid(. ~ group) + 
   geom_vline(xintercept = c(0, 1)) + 
   geom_hline(yintercept = c(0, 1)) + # bounding box
-  geom_abline(slope = 1, intercept = 0, color = 'grey50', linetype = 'dashed') + # diagonal line of perfect
-  geom_vline(xintercept = thresholds, color = 'grey20') + # thresholds
+  geom_abline(slope = 1, intercept = 0, color = 'grey50', linetype = 'dashed') + 
+  geom_vline(xintercept = thresholds, color = 'grey20') + 
   geom_point() + 
   geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.02) + 
   geom_smooth(method= 'lm', color = 'grey20', se = FALSE) + 
@@ -407,13 +422,17 @@ c = analytic.form_ntiles(BIA, groups =10) %>%
 ```
 
 ![](Threshold-Adjustment-Playbook_files/figure-gfm/distributions-1.png)<!-- -->
-\## Assess Model Performance Within Classes: AUROC, Calibration Curves
 
-- Keep in mind, disparities in AUROC suggest the model functions
-  (“discriminates”, in the good sense) better or worse for some
-  subgroups (e.g., due to representation within the data, availability
-  of data, etc.) and PR-AUC is swayed by outcome prevalence, so expect
-  groups with higher outcome rates to have higher PR-AUCs.
+## Assess Overall Model Performance Within Each Class
+
+Now, we look at AUC and calibration for each subgroup within each class.
+Keep in mind, disparities in AUROC suggest the model functions
+(“discriminates”, in the good sense) better or worse for some subgroups
+(e.g., due to representation within the data, availability of data,
+etc.). Because PR-AUC is swayed by outcome prevalence, and we thus
+expect groups with higher outcome rates to have higher PR-AUCs, we
+calculate them but don’t use them in our assessment of subgroup
+performance here.
 
 ``` r
 performances = lapply(sensitive, function(s){
@@ -424,20 +443,16 @@ performances = lapply(sensitive, function(s){
     if(length(df.list) == 1){
       warning(glue::glue("a group of size 1 found for variable={s}, possibly an error"))
     }
-    
     # For each value within the sensitive variable, e.g. for male within sex, calculate ROC and PRC
     temp.roc = mapply(function(temp.df, value){
       analytic.calc_roc(temp.df$proba, temp.df$label_value, group_name = value ) %>% 
         mutate(n_group = nrow(temp.df)) # subgroup sample size for clarity
     }, df.list, s.values ) %>% t() %>% as.tibble()
-    
     temp.prc = mapply(function(temp.df, value){
       analytic.calc_prc(temp.df$proba, temp.df$label_value, group_name = value)
     }, df.list, s.values ) %>% t() %>% as.tibble()
-    
     # Combine globals into one output of AUROCs and PR-AUCs
     global = left_join(temp.roc %>% select(group, n_group, auroc) %>% tidyr::unnest(cols = c(group, n_group, auroc)), temp.prc %>% select(group, auprc) %>% tidyr::unnest(cols = c(group, auprc)), by = join_by(group)) %>% mutate(group = glue::glue('{s}={group}'))
-    
     # For plotting, unpack long list of each point along ROC and PR curves
     temp.a = temp.roc %>% pull(roc) %>% bind_rows() 
     temp.b = temp.prc %>% pull(prc) %>% bind_rows() 
@@ -448,7 +463,6 @@ performances = lapply(sensitive, function(s){
         by = c('group', 'threshold_desired'), suffix = c(".roc",  ".prc") ) %>% 
       mutate(variable = s) %>% 
       select(variable, group, threshold_desired, everything())
-    
     # Generate graphs of a=ROC, b = PRC, c = calibration as above
     a = temp.a %>% 
       ggplot(aes(x = fpr, y = tpr, color = group)) + 
@@ -460,7 +474,6 @@ performances = lapply(sensitive, function(s){
       theme_minimal() + coord_fixed() + 
       labs(color = s) +
       ggtitle(glue::glue("ROC Curve")) 
-    
     b = temp.b %>%
       ggplot(aes(x = recall, y = preCIsion, color = group)) + 
       geom_vline(xintercept = c(0, 1)) + geom_hline(yintercept = c(0, 1)) + 
@@ -474,55 +487,51 @@ performances = lapply(sensitive, function(s){
       theme_minimal() + coord_fixed() + 
       guides(color = "none") +
       ggtitle(glue::glue("PRC Curve"))
-    
     # Combine ROC and PR curves into one side-by-side
     ab = ggpubr::ggarrange(a, b, legend = 'none')
-    
-    # Calibration curves, default is 10 groups = deciles and no zooming.
-    c = analytic.form_ntiles(BIA, groups = 10, group_var = s) %>% # passes entire input df in, stratifies internally.
+    # Calibration curves
+    c = analytic.form_ntiles(BIA, groups = 10, group_var = s) %>% 
       ggplot(aes(x = model_prediction_mean, y = label_mean, color = group)) + 
       facet_grid(. ~ group) + 
-      geom_vline(xintercept = c(0, 1)) + geom_hline(yintercept = c(0, 1)) + # bounding box
-      geom_abline(slope = 1, intercept = 0, color = 'grey50', linetype = 'dashed') + # diagonal line of perfect
-      geom_vline(xintercept = thresholds, color = 'grey20') + # thresholds
+      geom_vline(xintercept = c(0, 1)) + geom_hline(yintercept = c(0, 1)) + 
+      geom_abline(slope = 1, intercept = 0, color = 'grey50', linetype = 'dashed') + 
+      geom_vline(xintercept = thresholds, color = 'grey20') + 
       geom_point() + geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.02) + 
       geom_smooth(method= 'lm', color = 'grey20', se = FALSE) + 
       theme_minimal() + coord_fixed() + 
       ylim(0, 1) + xlim(0, 1) + 
       xlab('Mean Estimated Risk') + ylab('Mean Observed Positives') +
       ggtitle(glue::glue("Calibration Curve"))
-    
     # Combine calibration below ROC+PR into one giant figure.
     fig = ggpubr::ggarrange(ab, c, ncol = 1, nrow = 2, common.legend = TRUE, legend = 'bottom', heights = c(1, 1.2) ) 
     print(fig)
-    
     return(tibble(global=list(global), local=list(local)) ) 
   }) %>% bind_rows()
 ```
 
     ## [1] "race"
 
-![](Threshold-Adjustment-Playbook_files/figure-gfm/sensitive_variables-1.png)<!-- -->
+![](Threshold-Adjustment-Playbook_files/figure-gfm/class_performance-1.png)<!-- -->
 
     ## [1] "sex"
 
-![](Threshold-Adjustment-Playbook_files/figure-gfm/sensitive_variables-2.png)<!-- -->
+![](Threshold-Adjustment-Playbook_files/figure-gfm/class_performance-2.png)<!-- -->
 
     ## [1] "age"
 
-![](Threshold-Adjustment-Playbook_files/figure-gfm/sensitive_variables-3.png)<!-- -->
+![](Threshold-Adjustment-Playbook_files/figure-gfm/class_performance-3.png)<!-- -->
 
     ## [1] "language"
 
-![](Threshold-Adjustment-Playbook_files/figure-gfm/sensitive_variables-4.png)<!-- -->
+![](Threshold-Adjustment-Playbook_files/figure-gfm/class_performance-4.png)<!-- -->
 
     ## [1] "insurance"
 
-![](Threshold-Adjustment-Playbook_files/figure-gfm/sensitive_variables-5.png)<!-- -->
+![](Threshold-Adjustment-Playbook_files/figure-gfm/class_performance-5.png)<!-- -->
 
 ``` r
 # Unpack the listed outputs from above into dataframe
-global_performances = performances %>% pull(global) %>% bind_rows() # 'global_performances' will output a table presenting the total AUROC and PR-AUC for each group within each sensitive variable. 
+global_performances = performances %>% pull(global) %>% bind_rows() # output a table presenting the total AUROC and PR-AUC for each group within each sensitive variable. 
 knitr::kable(global_performances)
 ```
 
@@ -552,34 +561,20 @@ knitr::kable(global_performances)
 | insurance=Self-Pay         |    7263 | 0.5233214 | 0.0833936 |
 | insurance=Workers Comp     |    7207 | 0.5201778 | 0.0909183 |
 
-``` r
-local_performances = performances %>% pull(local) %>% bind_rows() %>% 
-  mutate(fnr = 1-tpr, .after = 'fpr') # 'local_performances' will output a wider dataframe of the specific performance characteristics around each provided threshold/cutoff. Note that this is not an exhaustive list. The values are pulled from the curves used to make the graphs, a very high or very low threshold may output odd values such as 0, 1, Inf, or NA. 
-print(local_performances)
-```
+## Assess Fairness Metrics by Class
 
-    ## # A tibble: 46 × 13
-    ## # Groups:   group [23]
-    ##    variable group      threshold_desired cutoff.roc   tpr   fpr   fnr cutoff.prc
-    ##    <chr>    <chr>                  <dbl>      <dbl> <dbl> <dbl> <dbl>      <dbl>
-    ##  1 race     African A…              0.08       0.08 0.657 0.651 0.343       0.08
-    ##  2 race     Asian                   0.08       0.08 0.657 0.650 0.343       0.08
-    ##  3 race     Hispanic                0.08       0.08 0.683 0.652 0.317       0.08
-    ##  4 race     Native Am…              0.08       0.08 0.677 0.652 0.323       0.08
-    ##  5 race     Something…              0.08       0.08 0.685 0.646 0.315       0.08
-    ##  6 race     Two or mo…              0.08       0.08 0.635 0.654 0.365       0.08
-    ##  7 race     Unknown                 0.08       0.08 0.678 0.647 0.322       0.08
-    ##  8 race     White                   0.08       0.08 0.654 0.656 0.346       0.08
-    ##  9 race     African A…              0.15       0.15 0.325 0.326 0.675       0.15
-    ## 10 race     Asian                   0.15       0.15 0.359 0.332 0.641       0.15
-    ## # ℹ 36 more rows
-    ## # ℹ 5 more variables: preCIsion <dbl>, recall <dbl>, preCIsion.raw <dbl>,
-    ## #   npv <dbl>, alert_rpp <dbl>
+Fairness metrics allow us to measure model bias at specific thresholds.
+This quantifies the real-world impact of our model on our patients at
+that threshold. Our fairness metric here is Equal Opportunity (subgroup
+FNR - referent FNR). Equal Opportunity measures whether people who will
+experience the outcome have a fair chance of being flagged as high risk
+at our chosen threshold.
 
-## Assess Bias by Class: Equal Opportunity, Predictive Parity
+Create a dataframe of performance metrics and their confidence intervals
+(CIs) using the Agresti-Coull method for use in our bias check below.
 
 ``` r
-#### Calculate confidence intervals (CIs) using the Agresti-Coull method:
+# You don't need to edit anything in this chunk unless your variable names differ.
 CIs = lapply(sensitive, function(s){
     lapply(thresholds, function(t){
       loc_ci = BIA %>% mutate(new_label = as.integer(proba >= t) ) %>% group_by_(s) %>% 
@@ -592,7 +587,7 @@ CIs = lapply(sensitive, function(s){
         ) %>% 
         mutate(prev_percent = (round((pos/total) * 100, digits=4)), 
                alert_rate = pp/total, 
-               ppv_preCIsion = tp/pp, ppv_ci = binom.confint(tp, pp, method = 'ac')[4:6], # adds a mean, lower, and upper dataframe inside the dataframe.
+               ppv_precision = tp/pp, ppv_ci = binom.confint(tp, pp, method = 'ac')[4:6], 
                npv = tn/pn, 
                tpr_recall_sensitivity = tp/(pos), tpr_ci = binom.confint(tp, pos, method = 'ac')[4:6],
                tnr_specificity = tn/(neg), 
@@ -603,8 +598,10 @@ CIs = lapply(sensitive, function(s){
   }) %>% bind_rows()
 ```
 
+Create a function called ‘check’ to help us check for bias.
+
 ``` r
-#### Then we create function to help with our bias check
+#  You don't need to edit anything in this chunk unless your variable names differ.
 bias_check = function(l_perfs, variable_colname, group_colname, reference_group, p_threshold = 0.05, fairness_metric="not FNR"){
   if(!(variable_colname %in% colnames(l_perfs)) ){warning(glue::glue("Could not find the supplied variable column named={variable_colname}")); return(FALSE)}
   if(!(group_colname %in% colnames(l_perfs)) ){warning(glue::glue("Could not find the supplied group column named={group_colname}")); return(FALSE)}
@@ -614,6 +611,7 @@ bias_check = function(l_perfs, variable_colname, group_colname, reference_group,
     return(FALSE)}
   if(!('pos' %in% colnames(l_perfs))){warning("Could not find the # of positive cases in the expected column named=pos"); return(FALSE)}
   if(!('total' %in% colnames(l_perfs))){warning("Could not find the # of total cases in the expected column named=total"); return(FALSE)}
+  
   ref = l_perfs[which(unlist(l_perfs[group_colname]) == reference_group), variable_colname][[1]] %>% 
     bind_cols(l_perfs[which(unlist(l_perfs[group_colname]) == reference_group), c('pos', 'total')] %>% 
                 mutate(prev = pos/total)) # unpack pos and total and calculate prev
@@ -629,8 +627,9 @@ bias_check = function(l_perfs, variable_colname, group_colname, reference_group,
            prev_delta_sign = sign(prev - ref$prev[1])) %>% 
     ungroup() %>% # the ungroup stops the rowwise
     mutate(difference_check = eod > 0.05) %>%
+
     mutate(five_pp_diff = if_else(eod > 0.05, "BIAS", "NO BIAS")) %>% 
-    mutate(ci_check = if_else(eod > 0.05 & outside_ci, "BIAS", "NO BIAS")) %>% 
+     mutate(ci_check = if_else(eod > 0.05 & outside_ci, "BIAS", "NO BIAS")) %>% 
     mutate(
       prev_delta_sign = if_else(p_value > p_threshold, 0, prev_delta_sign), # if prevs similar, sign = 0, a fuzzy similar
       composite_check = case_when( 
@@ -651,11 +650,19 @@ bias_check = function(l_perfs, variable_colname, group_colname, reference_group,
 }
 ```
 
+Using the dataframe and function from above, we’ll check the equal
+opportunity differences of subgroups for each class. You do need to edit
+this chunk; refer to the in-line comments to do so.
+
 ``` r
-FNR_race = CIs %>% filter(!is.na(race), threshold == 0.15) %>% 
-  bias_check('fnr_ci', 'race', 'Hispanic', fairness_metric='FNR') %>% 
-  select('group','difference_check','outside_ci','directionality','five_pp_diff','ci_check','composite_check', 'mean','lower','upper','pos','total','prev','delta_sign','eod','lower_outside','upper_outside','p_value','prev_delta_sign') 
-knitr::kable(FNR_race, caption = "FNR metrics by race", digits=4) %>%
+EOD_race = CIs %>% filter(!is.na(race), threshold == 0.15) %>% # If you defined multiple thresholds in Step 1, list the one you want to use for analysis here.
+  bias_check('fnr_ci', 'race', 'Hispanic', fairness_metric='FNR') %>% # If you are using different sensitive variables than we are, change the second value to your first variable of interest; change the third value to its reference group. 
+  mutate(
+    five_pp_diff = if_else(group == 'Hispanic', "REF", five_pp_diff) # Replace the value of 'group' with your reference group
+  ) %>%  
+  select('group','mean','eod','five_pp_diff','total','pos','prev') %>%
+  rename('fnr' = mean) 
+knitr::kable(EOD_race, caption = "Equal Opportunity Differences, Race", digits=4) %>%
   kableExtra::kable_styling() %>%
   kableExtra::column_spec(2:4, background = "lightgray") %>%
   kableExtra::column_spec(5:7, background = "darkgray")
@@ -663,66 +670,30 @@ knitr::kable(FNR_race, caption = "FNR metrics by race", digits=4) %>%
 
 <table class="table" style="margin-left: auto; margin-right: auto;">
 <caption>
-FNR metrics by race
+Equal Opportunity Differences, Race
 </caption>
 <thead>
 <tr>
 <th style="text-align:left;">
 group
 </th>
-<th style="text-align:left;">
-difference_check
-</th>
-<th style="text-align:left;">
-outside_ci
-</th>
-<th style="text-align:left;">
-directionality
-</th>
-<th style="text-align:left;">
-five_pp_diff
-</th>
-<th style="text-align:left;">
-ci_check
-</th>
-<th style="text-align:left;">
-composite_check
-</th>
 <th style="text-align:right;">
-mean
-</th>
-<th style="text-align:right;">
-lower
-</th>
-<th style="text-align:right;">
-upper
-</th>
-<th style="text-align:right;">
-pos
-</th>
-<th style="text-align:right;">
-total
-</th>
-<th style="text-align:right;">
-prev
-</th>
-<th style="text-align:right;">
-delta_sign
+fnr
 </th>
 <th style="text-align:right;">
 eod
 </th>
 <th style="text-align:left;">
-lower_outside
-</th>
-<th style="text-align:left;">
-upper_outside
+five_pp_diff
 </th>
 <th style="text-align:right;">
-p_value
+total
 </th>
 <th style="text-align:right;">
-prev_delta_sign
+pos
+</th>
+<th style="text-align:right;">
+prev
 </th>
 </tr>
 </thead>
@@ -731,494 +702,210 @@ prev_delta_sign
 <td style="text-align:left;">
 African American
 </td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-NA
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.6754
 </td>
-<td style="text-align:right;">
-0.6346
-</td>
-<td style="text-align:right;">
-0.7137
-</td>
-<td style="text-align:right;">
-536
-</td>
-<td style="text-align:right;">
-6435
-</td>
-<td style="text-align:right;">
-0.0833
-</td>
-<td style="text-align:right;">
-1
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.0180
 </td>
-<td style="text-align:left;">
-FALSE
+<td style="text-align:left;background-color: lightgray !important;">
+NO BIAS
 </td>
-<td style="text-align:left;">
-TRUE
+<td style="text-align:right;background-color: darkgray !important;">
+6435
 </td>
-<td style="text-align:right;">
-0.0832
+<td style="text-align:right;background-color: darkgray !important;">
+536
 </td>
-<td style="text-align:right;">
-0
+<td style="text-align:right;background-color: darkgray !important;">
+0.0833
 </td>
 </tr>
 <tr>
 <td style="text-align:left;">
 Asian
 </td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-NA
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.6409
 </td>
-<td style="text-align:right;">
-0.5981
-</td>
-<td style="text-align:right;">
-0.6816
-</td>
-<td style="text-align:right;">
-504
-</td>
-<td style="text-align:right;">
-6199
-</td>
-<td style="text-align:right;">
-0.0813
-</td>
-<td style="text-align:right;">
--1
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.0165
 </td>
-<td style="text-align:left;">
-TRUE
+<td style="text-align:left;background-color: lightgray !important;">
+NO BIAS
 </td>
-<td style="text-align:left;">
-FALSE
+<td style="text-align:right;background-color: darkgray !important;">
+6199
 </td>
-<td style="text-align:right;">
-0.1893
+<td style="text-align:right;background-color: darkgray !important;">
+504
 </td>
-<td style="text-align:right;">
-0
+<td style="text-align:right;background-color: darkgray !important;">
+0.0813
 </td>
 </tr>
 <tr>
 <td style="text-align:left;">
 Hispanic
 </td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-NA
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.6574
 </td>
-<td style="text-align:right;">
-0.6132
-</td>
-<td style="text-align:right;">
-0.6990
-</td>
-<td style="text-align:right;">
-467
-</td>
-<td style="text-align:right;">
-6241
-</td>
-<td style="text-align:right;">
-0.0748
-</td>
-<td style="text-align:right;">
-0
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.0000
 </td>
-<td style="text-align:left;">
-FALSE
+<td style="text-align:left;background-color: lightgray !important;">
+REF
 </td>
-<td style="text-align:left;">
-FALSE
+<td style="text-align:right;background-color: darkgray !important;">
+6241
 </td>
-<td style="text-align:right;">
-1.0000
+<td style="text-align:right;background-color: darkgray !important;">
+467
 </td>
-<td style="text-align:right;">
-0
+<td style="text-align:right;background-color: darkgray !important;">
+0.0748
 </td>
 </tr>
 <tr>
 <td style="text-align:left;">
 Native American
 </td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-NA
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.6772
 </td>
-<td style="text-align:right;">
-0.6353
-</td>
-<td style="text-align:right;">
-0.7164
-</td>
-<td style="text-align:right;">
-508
-</td>
-<td style="text-align:right;">
-6118
-</td>
-<td style="text-align:right;">
-0.0830
-</td>
-<td style="text-align:right;">
-1
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.0198
 </td>
-<td style="text-align:left;">
-FALSE
+<td style="text-align:left;background-color: lightgray !important;">
+NO BIAS
 </td>
-<td style="text-align:left;">
-TRUE
+<td style="text-align:right;background-color: darkgray !important;">
+6118
 </td>
-<td style="text-align:right;">
-0.0972
+<td style="text-align:right;background-color: darkgray !important;">
+508
 </td>
-<td style="text-align:right;">
-0
+<td style="text-align:right;background-color: darkgray !important;">
+0.0830
 </td>
 </tr>
 <tr>
 <td style="text-align:left;">
 Something Else
 </td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-NA
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.6660
 </td>
-<td style="text-align:right;">
-0.6227
-</td>
-<td style="text-align:right;">
-0.7066
-</td>
-<td style="text-align:right;">
-482
-</td>
-<td style="text-align:right;">
-6198
-</td>
-<td style="text-align:right;">
-0.0778
-</td>
-<td style="text-align:right;">
-1
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.0086
 </td>
-<td style="text-align:left;">
-FALSE
+<td style="text-align:left;background-color: lightgray !important;">
+NO BIAS
 </td>
-<td style="text-align:left;">
-TRUE
+<td style="text-align:right;background-color: darkgray !important;">
+6198
 </td>
-<td style="text-align:right;">
-0.5594
+<td style="text-align:right;background-color: darkgray !important;">
+482
 </td>
-<td style="text-align:right;">
-0
+<td style="text-align:right;background-color: darkgray !important;">
+0.0778
 </td>
 </tr>
 <tr>
 <td style="text-align:left;">
 Two or more races
 </td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-NA
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.7014
 </td>
-<td style="text-align:right;">
-0.6598
-</td>
-<td style="text-align:right;">
-0.7399
-</td>
-<td style="text-align:right;">
-499
-</td>
-<td style="text-align:right;">
-6272
-</td>
-<td style="text-align:right;">
-0.0796
-</td>
-<td style="text-align:right;">
-1
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.0440
 </td>
-<td style="text-align:left;">
-FALSE
+<td style="text-align:left;background-color: lightgray !important;">
+NO BIAS
 </td>
-<td style="text-align:left;">
-TRUE
+<td style="text-align:right;background-color: darkgray !important;">
+6272
 </td>
-<td style="text-align:right;">
-0.3380
+<td style="text-align:right;background-color: darkgray !important;">
+499
 </td>
-<td style="text-align:right;">
-0
+<td style="text-align:right;background-color: darkgray !important;">
+0.0796
 </td>
 </tr>
 <tr>
 <td style="text-align:left;">
 Unknown
 </td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-NA
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.6377
 </td>
-<td style="text-align:right;">
-0.5934
-</td>
-<td style="text-align:right;">
-0.6798
-</td>
-<td style="text-align:right;">
-472
-</td>
-<td style="text-align:right;">
-6253
-</td>
-<td style="text-align:right;">
-0.0755
-</td>
-<td style="text-align:right;">
--1
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.0197
 </td>
-<td style="text-align:left;">
-TRUE
+<td style="text-align:left;background-color: lightgray !important;">
+NO BIAS
 </td>
-<td style="text-align:left;">
-FALSE
+<td style="text-align:right;background-color: darkgray !important;">
+6253
 </td>
-<td style="text-align:right;">
-0.9163
+<td style="text-align:right;background-color: darkgray !important;">
+472
 </td>
-<td style="text-align:right;">
-0
+<td style="text-align:right;background-color: darkgray !important;">
+0.0755
 </td>
 </tr>
 <tr>
 <td style="text-align:left;">
 White
 </td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-NA
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.6742
 </td>
-<td style="text-align:right;">
-0.6314
-</td>
-<td style="text-align:right;">
-0.7143
-</td>
-<td style="text-align:right;">
-488
-</td>
-<td style="text-align:right;">
-6284
-</td>
-<td style="text-align:right;">
-0.0777
-</td>
-<td style="text-align:right;">
-1
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.0168
 </td>
-<td style="text-align:left;">
-FALSE
+<td style="text-align:left;background-color: lightgray !important;">
+NO BIAS
 </td>
-<td style="text-align:left;">
-TRUE
+<td style="text-align:right;background-color: darkgray !important;">
+6284
 </td>
-<td style="text-align:right;">
-0.5734
+<td style="text-align:right;background-color: darkgray !important;">
+488
 </td>
-<td style="text-align:right;">
-0
+<td style="text-align:right;background-color: darkgray !important;">
+0.0777
 </td>
 </tr>
 </tbody>
 </table>
 
 ``` r
-CIs %>% filter(!is.na(race), threshold == 0.15) %>% 
-  bias_check('fnr_ci', 'race', 'Hispanic', fairness_metric='FNR') %>% 
+CIs %>% filter(!is.na(race), threshold == 0.15) %>% # If you defined multiple thresholds in Step 1, list the one you want to use for analysis here.
+  bias_check('fnr_ci', 'race', 'Hispanic', fairness_metric='FNR') %>% # If you are using different sensitive variables than we are, change the second value to your first variable of interest; change the third value to its reference group. 
   mutate(label = paste0(as.character(round(prev*100, 1)), '%')) %>%
   ggplot(aes(x=group, y = mean, ymin = lower, ymax = upper, color = group)) + 
   geom_linerange() + geom_point() + 
   theme(axis.line=element_blank(), axis.text.x=element_blank()) + 
-  ggtitle("FNR by race") +
+  ggtitle("FNRs for race") +
   geom_text(aes(x=group, y=0, label=label), show.legend=FALSE)
 ```
 
-![](Threshold-Adjustment-Playbook_files/figure-gfm/fnr_combo-1.png)<!-- -->
+![](Threshold-Adjustment-Playbook_files/figure-gfm/eod-1.png)<!-- -->
 
 ``` r
-FNR_sex = CIs %>% filter(!is.na(sex), threshold == 0.15) %>% 
-  bias_check('fnr_ci', 'sex', 'Female', fairness_metric='FNR') %>% select('group','difference_check','outside_ci','directionality','five_pp_diff','ci_check','composite_check', 'mean','lower','upper','pos','total','prev','delta_sign','eod','lower_outside','upper_outside','p_value','prev_delta_sign') 
-knitr::kable(FNR_sex, caption = "FNR metrics by sex", digits=4) %>%
+EOD_sex = CIs %>% filter(!is.na(sex), threshold == 0.15) %>% # If you defined multiple thresholds in Step 1, list the one you want to use for analysis here.
+  bias_check('fnr_ci', 'sex', 'Female', fairness_metric='FNR') %>% # If you are using different sensitive variables than we are, change the second value to your first variable of interest; change the third value to its reference group. 
+    mutate(
+    five_pp_diff = if_else(group == 'Female', "REF", five_pp_diff)) %>%  # Replace the value of 'group' with your reference group
+    select('group','mean','eod','five_pp_diff','total','pos','prev') %>%
+    rename('fnr' = mean) 
+knitr::kable(EOD_sex, caption = "Equal Opportunity Differences, Sex", digits=4) %>%
   kableExtra::kable_styling() %>%
   kableExtra::column_spec(2:4, background = "lightgray") %>%
   kableExtra::column_spec(5:7, background = "darkgray")
@@ -1226,66 +913,30 @@ knitr::kable(FNR_sex, caption = "FNR metrics by sex", digits=4) %>%
 
 <table class="table" style="margin-left: auto; margin-right: auto;">
 <caption>
-FNR metrics by sex
+Equal Opportunity Differences, Sex
 </caption>
 <thead>
 <tr>
 <th style="text-align:left;">
 group
 </th>
-<th style="text-align:left;">
-difference_check
-</th>
-<th style="text-align:left;">
-outside_ci
-</th>
-<th style="text-align:left;">
-directionality
-</th>
-<th style="text-align:left;">
-five_pp_diff
-</th>
-<th style="text-align:left;">
-ci_check
-</th>
-<th style="text-align:left;">
-composite_check
-</th>
 <th style="text-align:right;">
-mean
-</th>
-<th style="text-align:right;">
-lower
-</th>
-<th style="text-align:right;">
-upper
-</th>
-<th style="text-align:right;">
-pos
-</th>
-<th style="text-align:right;">
-total
-</th>
-<th style="text-align:right;">
-prev
-</th>
-<th style="text-align:right;">
-delta_sign
+fnr
 </th>
 <th style="text-align:right;">
 eod
 </th>
 <th style="text-align:left;">
-lower_outside
-</th>
-<th style="text-align:left;">
-upper_outside
+five_pp_diff
 </th>
 <th style="text-align:right;">
-p_value
+total
 </th>
 <th style="text-align:right;">
-prev_delta_sign
+pos
+</th>
+<th style="text-align:right;">
+prev
 </th>
 </tr>
 </thead>
@@ -1294,140 +945,72 @@ prev_delta_sign
 <td style="text-align:left;">
 Female
 </td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-NA
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.6624
 </td>
-<td style="text-align:right;">
-0.6415
-</td>
-<td style="text-align:right;">
-0.6827
-</td>
-<td style="text-align:right;">
-2020
-</td>
-<td style="text-align:right;">
-24922
-</td>
-<td style="text-align:right;">
-0.0811
-</td>
-<td style="text-align:right;">
-0
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.0000
 </td>
-<td style="text-align:left;">
-FALSE
+<td style="text-align:left;background-color: lightgray !important;">
+REF
 </td>
-<td style="text-align:left;">
-FALSE
+<td style="text-align:right;background-color: darkgray !important;">
+24922
 </td>
-<td style="text-align:right;">
-1.0000
+<td style="text-align:right;background-color: darkgray !important;">
+2020
 </td>
-<td style="text-align:right;">
-0
+<td style="text-align:right;background-color: darkgray !important;">
+0.0811
 </td>
 </tr>
 <tr>
 <td style="text-align:left;">
 Male
 </td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-NA
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.6710
 </td>
-<td style="text-align:right;">
-0.6497
-</td>
-<td style="text-align:right;">
-0.6915
-</td>
-<td style="text-align:right;">
-1936
-</td>
-<td style="text-align:right;">
-25078
-</td>
-<td style="text-align:right;">
-0.0772
-</td>
-<td style="text-align:right;">
-1
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.0086
 </td>
-<td style="text-align:left;">
-FALSE
+<td style="text-align:left;background-color: lightgray !important;">
+NO BIAS
 </td>
-<td style="text-align:left;">
-TRUE
+<td style="text-align:right;background-color: darkgray !important;">
+25078
 </td>
-<td style="text-align:right;">
-0.1142
+<td style="text-align:right;background-color: darkgray !important;">
+1936
 </td>
-<td style="text-align:right;">
-0
+<td style="text-align:right;background-color: darkgray !important;">
+0.0772
 </td>
 </tr>
 </tbody>
 </table>
 
 ``` r
-CIs %>% filter(!is.na(sex), threshold == 0.15) %>% 
-  bias_check('fnr_ci', 'sex', 'Female', fairness_metric='FNR') %>% 
+CIs %>% filter(!is.na(sex), threshold == 0.15) %>% # If you defined multiple thresholds in Step 1, list the one you want to use for analysis here.
+  bias_check('fnr_ci', 'sex', 'Female', fairness_metric='FNR') %>% # If you are using different sensitive variables than we are, change the second value to your first variable of interest; change the third value to its reference group. 
   mutate(label = paste0(as.character(round(prev*100, 1)), '%')) %>%
   ggplot(aes(x=group, y = mean, ymin = lower, ymax = upper, color = group)) + 
   geom_linerange() + geom_point() + 
   theme(axis.line=element_blank(), axis.text.x=element_blank()) + 
-  ggtitle("FNR by sex") +
+  ggtitle("FNRs for sex") +
   geom_text(aes(x=group, y=0, label=label), show.legend=FALSE)
 ```
 
-![](Threshold-Adjustment-Playbook_files/figure-gfm/fnr_combo-2.png)<!-- -->
+![](Threshold-Adjustment-Playbook_files/figure-gfm/eod-2.png)<!-- -->
 
 ``` r
-FNR_language = CIs %>% filter(!is.na(language), threshold == 0.15) %>% 
-  bias_check('fnr_ci', 'language', 'English', fairness_metric='FNR') %>% select('group','difference_check','outside_ci','directionality','five_pp_diff','ci_check','composite_check', 'mean','lower','upper','pos','total','prev','delta_sign','eod','lower_outside','upper_outside','p_value','prev_delta_sign') 
-knitr::kable(FNR_language, caption = "FNR metrics by language", digits=4) %>%
+EOD_language = CIs %>% filter(!is.na(language), threshold == 0.15) %>% # If you defined multiple thresholds in Step 1, list the one you want to use for analysis here.
+  bias_check('fnr_ci', 'language', 'English', fairness_metric='FNR') %>% # If you are using different sensitive variables than we are, change the second value to your first variable of interest; change the third value to its reference group. 
+  mutate(
+    five_pp_diff = if_else(group == 'English', "REF", five_pp_diff) # Replace the value of 'group' with your reference group
+  ) %>%  
+  select('group','mean','eod','five_pp_diff','total','pos','prev') 
+knitr::kable(EOD_language, caption = "Equal Opportunity Differences, Language", digits=4) %>%
   kableExtra::kable_styling() %>%
   kableExtra::column_spec(2:4, background = "lightgray") %>%
   kableExtra::column_spec(5:7, background = "darkgray")
@@ -1435,66 +1018,30 @@ knitr::kable(FNR_language, caption = "FNR metrics by language", digits=4) %>%
 
 <table class="table" style="margin-left: auto; margin-right: auto;">
 <caption>
-FNR metrics by language
+Equal Opportunity Differences, Language
 </caption>
 <thead>
 <tr>
 <th style="text-align:left;">
 group
 </th>
-<th style="text-align:left;">
-difference_check
-</th>
-<th style="text-align:left;">
-outside_ci
-</th>
-<th style="text-align:left;">
-directionality
-</th>
-<th style="text-align:left;">
-five_pp_diff
-</th>
-<th style="text-align:left;">
-ci_check
-</th>
-<th style="text-align:left;">
-composite_check
-</th>
 <th style="text-align:right;">
 mean
-</th>
-<th style="text-align:right;">
-lower
-</th>
-<th style="text-align:right;">
-upper
-</th>
-<th style="text-align:right;">
-pos
-</th>
-<th style="text-align:right;">
-total
-</th>
-<th style="text-align:right;">
-prev
-</th>
-<th style="text-align:right;">
-delta_sign
 </th>
 <th style="text-align:right;">
 eod
 </th>
 <th style="text-align:left;">
-lower_outside
-</th>
-<th style="text-align:left;">
-upper_outside
+five_pp_diff
 </th>
 <th style="text-align:right;">
-p_value
+total
 </th>
 <th style="text-align:right;">
-prev_delta_sign
+pos
+</th>
+<th style="text-align:right;">
+prev
 </th>
 </tr>
 </thead>
@@ -1503,199 +1050,95 @@ prev_delta_sign
 <td style="text-align:left;">
 English
 </td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-NA
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.6755
 </td>
-<td style="text-align:right;">
-0.6505
-</td>
-<td style="text-align:right;">
-0.6995
-</td>
-<td style="text-align:right;">
-1399
-</td>
-<td style="text-align:right;">
-16963
-</td>
-<td style="text-align:right;">
-0.0825
-</td>
-<td style="text-align:right;">
-0
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.0000
 </td>
-<td style="text-align:left;">
-FALSE
+<td style="text-align:left;background-color: lightgray !important;">
+REF
 </td>
-<td style="text-align:left;">
-FALSE
+<td style="text-align:right;background-color: darkgray !important;">
+16963
 </td>
-<td style="text-align:right;">
-1.0000
+<td style="text-align:right;background-color: darkgray !important;">
+1399
 </td>
-<td style="text-align:right;">
-0
+<td style="text-align:right;background-color: darkgray !important;">
+0.0825
 </td>
 </tr>
 <tr>
 <td style="text-align:left;">
 Other
 </td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-NA
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.6482
 </td>
-<td style="text-align:right;">
-0.6220
-</td>
-<td style="text-align:right;">
-0.6735
-</td>
-<td style="text-align:right;">
-1316
-</td>
-<td style="text-align:right;">
-16569
-</td>
-<td style="text-align:right;">
-0.0794
-</td>
-<td style="text-align:right;">
--1
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.0273
 </td>
-<td style="text-align:left;">
-TRUE
+<td style="text-align:left;background-color: lightgray !important;">
+NO BIAS
 </td>
-<td style="text-align:left;">
-FALSE
+<td style="text-align:right;background-color: darkgray !important;">
+16569
 </td>
-<td style="text-align:right;">
-0.3159
+<td style="text-align:right;background-color: darkgray !important;">
+1316
 </td>
-<td style="text-align:right;">
-0
+<td style="text-align:right;background-color: darkgray !important;">
+0.0794
 </td>
 </tr>
 <tr>
 <td style="text-align:left;">
 Spanish
 </td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-TRUE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.6761
 </td>
-<td style="text-align:right;">
-0.6495
-</td>
-<td style="text-align:right;">
-0.7015
-</td>
-<td style="text-align:right;">
-1241
-</td>
-<td style="text-align:right;">
-16468
-</td>
-<td style="text-align:right;">
-0.0754
-</td>
-<td style="text-align:right;">
-1
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.0006
 </td>
-<td style="text-align:left;">
-TRUE
+<td style="text-align:left;background-color: lightgray !important;">
+NO BIAS
 </td>
-<td style="text-align:left;">
-TRUE
+<td style="text-align:right;background-color: darkgray !important;">
+16468
 </td>
-<td style="text-align:right;">
-0.0168
+<td style="text-align:right;background-color: darkgray !important;">
+1241
 </td>
-<td style="text-align:right;">
--1
+<td style="text-align:right;background-color: darkgray !important;">
+0.0754
 </td>
 </tr>
 </tbody>
 </table>
 
 ``` r
-CIs %>% filter(!is.na(language), threshold == 0.15) %>% 
-  bias_check('fnr_ci', 'language', 'English', fairness_metric='FNR') %>% 
+CIs %>% filter(!is.na(language), threshold == 0.15) %>% # If you defined multiple thresholds in Step 1, list the one you want to use for analysis here.
+  bias_check('fnr_ci', 'language', 'English', fairness_metric='FNR') %>% # If you are using different sensitive variables than we are, change the second value to your first variable of interest; change the third value to its reference group. 
   mutate(label = paste0(as.character(round(prev*100, 1)), '%')) %>%
   ggplot(aes(x=group, y = mean, ymin = lower, ymax = upper, color = group)) + 
   geom_linerange() + geom_point() + 
   theme(axis.line=element_blank(), axis.text.x=element_blank()) + 
-  ggtitle("FNR by language") +
+  ggtitle("FNRs for language") +
   geom_text(aes(x=group, y=0, label=label), show.legend=FALSE)
 ```
 
-![](Threshold-Adjustment-Playbook_files/figure-gfm/fnr_combo-3.png)<!-- -->
+![](Threshold-Adjustment-Playbook_files/figure-gfm/eod-3.png)<!-- -->
 
 ``` r
-FNR_insurance = CIs %>% filter(!is.na(insurance), threshold == 0.15) %>% 
-  bias_check('fnr_ci', 'insurance', 'Medicaid', fairness_metric='FNR') %>% select('group','difference_check','outside_ci','directionality','five_pp_diff','ci_check','composite_check', 'mean','lower','upper','pos','total','prev','delta_sign','eod','lower_outside','upper_outside','p_value','prev_delta_sign') 
-knitr::kable(FNR_insurance, caption = "FNR metrics by insurance", digits=4) %>%
+EOD_insurance = CIs %>% filter(!is.na(insurance), threshold == 0.15) %>% # If you defined multiple thresholds in Step 1, list the one you want to use for analysis here.
+  bias_check('fnr_ci', 'insurance', 'Medicaid', fairness_metric='FNR') %>% # If you are using different sensitive variables than we are, change the second value to your first variable of interest; change the third value to its reference group. 
+  mutate(
+    five_pp_diff = if_else(group == 'Medicaid', "REF", five_pp_diff) # Replace the value of 'group' with your reference group
+  ) %>%  
+  select('group','mean','eod','five_pp_diff','total','pos','prev') 
+knitr::kable(EOD_insurance, caption = "Equal Opportunity Differences, Insurance", digits=4) %>%
   kableExtra::kable_styling() %>%
   kableExtra::column_spec(2:4, background = "lightgray") %>%
   kableExtra::column_spec(5:7, background = "darkgray")
@@ -1703,66 +1146,30 @@ knitr::kable(FNR_insurance, caption = "FNR metrics by insurance", digits=4) %>%
 
 <table class="table" style="margin-left: auto; margin-right: auto;">
 <caption>
-FNR metrics by insurance
+Equal Opportunity Differences, Insurance
 </caption>
 <thead>
 <tr>
 <th style="text-align:left;">
 group
 </th>
-<th style="text-align:left;">
-difference_check
-</th>
-<th style="text-align:left;">
-outside_ci
-</th>
-<th style="text-align:left;">
-directionality
-</th>
-<th style="text-align:left;">
-five_pp_diff
-</th>
-<th style="text-align:left;">
-ci_check
-</th>
-<th style="text-align:left;">
-composite_check
-</th>
 <th style="text-align:right;">
 mean
-</th>
-<th style="text-align:right;">
-lower
-</th>
-<th style="text-align:right;">
-upper
-</th>
-<th style="text-align:right;">
-pos
-</th>
-<th style="text-align:right;">
-total
-</th>
-<th style="text-align:right;">
-prev
-</th>
-<th style="text-align:right;">
-delta_sign
 </th>
 <th style="text-align:right;">
 eod
 </th>
 <th style="text-align:left;">
-lower_outside
-</th>
-<th style="text-align:left;">
-upper_outside
+five_pp_diff
 </th>
 <th style="text-align:right;">
-p_value
+total
 </th>
 <th style="text-align:right;">
-prev_delta_sign
+pos
+</th>
+<th style="text-align:right;">
+prev
 </th>
 </tr>
 </thead>
@@ -1771,484 +1178,237 @@ prev_delta_sign
 <td style="text-align:left;">
 Commercial
 </td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-NA
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.6679
 </td>
-<td style="text-align:right;">
-0.6274
-</td>
-<td style="text-align:right;">
-0.7060
-</td>
-<td style="text-align:right;">
-548
-</td>
-<td style="text-align:right;">
-7208
-</td>
-<td style="text-align:right;">
-0.0760
-</td>
-<td style="text-align:right;">
--1
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.0210
 </td>
-<td style="text-align:left;">
-TRUE
+<td style="text-align:left;background-color: lightgray !important;">
+NO BIAS
 </td>
-<td style="text-align:left;">
-FALSE
+<td style="text-align:right;background-color: darkgray !important;">
+7208
 </td>
-<td style="text-align:right;">
-0.9155
+<td style="text-align:right;background-color: darkgray !important;">
+548
 </td>
-<td style="text-align:right;">
-0
+<td style="text-align:right;background-color: darkgray !important;">
+0.0760
 </td>
 </tr>
 <tr>
 <td style="text-align:left;">
 Medicaid
 </td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-NA
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.6889
 </td>
-<td style="text-align:right;">
-0.6486
-</td>
-<td style="text-align:right;">
-0.7265
-</td>
-<td style="text-align:right;">
-540
-</td>
-<td style="text-align:right;">
-7160
-</td>
-<td style="text-align:right;">
-0.0754
-</td>
-<td style="text-align:right;">
-0
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.0000
 </td>
-<td style="text-align:left;">
-FALSE
+<td style="text-align:left;background-color: lightgray !important;">
+REF
 </td>
-<td style="text-align:left;">
-FALSE
+<td style="text-align:right;background-color: darkgray !important;">
+7160
 </td>
-<td style="text-align:right;">
-1.0000
+<td style="text-align:right;background-color: darkgray !important;">
+540
 </td>
-<td style="text-align:right;">
-0
+<td style="text-align:right;background-color: darkgray !important;">
+0.0754
 </td>
 </tr>
 <tr>
 <td style="text-align:left;">
 Medicare
 </td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-NA
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.6606
 </td>
-<td style="text-align:right;">
-0.6199
-</td>
-<td style="text-align:right;">
-0.6990
-</td>
-<td style="text-align:right;">
-548
-</td>
-<td style="text-align:right;">
-7104
-</td>
-<td style="text-align:right;">
-0.0771
-</td>
-<td style="text-align:right;">
--1
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.0283
 </td>
-<td style="text-align:left;">
-TRUE
+<td style="text-align:left;background-color: lightgray !important;">
+NO BIAS
 </td>
-<td style="text-align:left;">
-FALSE
+<td style="text-align:right;background-color: darkgray !important;">
+7104
 </td>
-<td style="text-align:right;">
-0.7222
+<td style="text-align:right;background-color: darkgray !important;">
+548
 </td>
-<td style="text-align:right;">
-0
+<td style="text-align:right;background-color: darkgray !important;">
+0.0771
 </td>
 </tr>
 <tr>
 <td style="text-align:left;">
 No Fault
 </td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-NA
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.6603
 </td>
-<td style="text-align:right;">
-0.6208
-</td>
-<td style="text-align:right;">
-0.6977
-</td>
-<td style="text-align:right;">
-580
-</td>
-<td style="text-align:right;">
-7082
-</td>
-<td style="text-align:right;">
-0.0819
-</td>
-<td style="text-align:right;">
--1
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.0285
 </td>
-<td style="text-align:left;">
-TRUE
+<td style="text-align:left;background-color: lightgray !important;">
+NO BIAS
 </td>
-<td style="text-align:left;">
-FALSE
+<td style="text-align:right;background-color: darkgray !important;">
+7082
 </td>
-<td style="text-align:right;">
-0.1600
+<td style="text-align:right;background-color: darkgray !important;">
+580
 </td>
-<td style="text-align:right;">
-0
+<td style="text-align:right;background-color: darkgray !important;">
+0.0819
 </td>
 </tr>
 <tr>
 <td style="text-align:left;">
 Other Government
 </td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-NA
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.6828
 </td>
-<td style="text-align:right;">
-0.6437
-</td>
-<td style="text-align:right;">
-0.7195
-</td>
-<td style="text-align:right;">
-577
-</td>
-<td style="text-align:right;">
-6976
-</td>
-<td style="text-align:right;">
-0.0827
-</td>
-<td style="text-align:right;">
--1
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.0060
 </td>
-<td style="text-align:left;">
-TRUE
+<td style="text-align:left;background-color: lightgray !important;">
+NO BIAS
 </td>
-<td style="text-align:left;">
-FALSE
+<td style="text-align:right;background-color: darkgray !important;">
+6976
 </td>
-<td style="text-align:right;">
-0.1151
+<td style="text-align:right;background-color: darkgray !important;">
+577
 </td>
-<td style="text-align:right;">
-0
+<td style="text-align:right;background-color: darkgray !important;">
+0.0827
 </td>
 </tr>
 <tr>
 <td style="text-align:left;">
 Self-Pay
 </td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-NA
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.6484
 </td>
-<td style="text-align:right;">
-0.6082
-</td>
-<td style="text-align:right;">
-0.6866
-</td>
-<td style="text-align:right;">
-566
-</td>
-<td style="text-align:right;">
-7263
-</td>
-<td style="text-align:right;">
-0.0779
-</td>
-<td style="text-align:right;">
--1
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.0405
 </td>
-<td style="text-align:left;">
-TRUE
+<td style="text-align:left;background-color: lightgray !important;">
+NO BIAS
 </td>
-<td style="text-align:left;">
-FALSE
+<td style="text-align:right;background-color: darkgray !important;">
+7263
 </td>
-<td style="text-align:right;">
-0.5925
+<td style="text-align:right;background-color: darkgray !important;">
+566
 </td>
-<td style="text-align:right;">
-0
+<td style="text-align:right;background-color: darkgray !important;">
+0.0779
 </td>
 </tr>
 <tr>
 <td style="text-align:left;">
 Workers Comp
 </td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-NA
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.6583
 </td>
-<td style="text-align:right;">
-0.6193
-</td>
-<td style="text-align:right;">
-0.6952
-</td>
-<td style="text-align:right;">
-597
-</td>
-<td style="text-align:right;">
-7207
-</td>
-<td style="text-align:right;">
-0.0828
-</td>
-<td style="text-align:right;">
--1
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.0306
 </td>
-<td style="text-align:left;">
-TRUE
+<td style="text-align:left;background-color: lightgray !important;">
+NO BIAS
 </td>
-<td style="text-align:left;">
-FALSE
+<td style="text-align:right;background-color: darkgray !important;">
+7207
 </td>
-<td style="text-align:right;">
-0.1062
+<td style="text-align:right;background-color: darkgray !important;">
+597
 </td>
-<td style="text-align:right;">
-0
+<td style="text-align:right;background-color: darkgray !important;">
+0.0828
 </td>
 </tr>
 </tbody>
 </table>
 
 ``` r
-CIs %>% filter(!is.na(insurance), threshold == 0.15) %>% 
-  bias_check('fnr_ci', 'insurance', 'Medicaid', fairness_metric='FNR') %>% 
+CIs %>% filter(!is.na(insurance), threshold == 0.15) %>% # If you defined multiple thresholds in Step 1, list the one you want to use for analysis here.
+  bias_check('fnr_ci', 'insurance', 'Medicaid', fairness_metric='FNR') %>% # If you are using different sensitive variables than we are, change the second value to your first variable of interest; change the third value to its reference group. 
   mutate(label = paste0(as.character(round(prev*100, 1)), '%')) %>%
   ggplot(aes(x=group, y = mean, ymin = lower, ymax = upper, color = group)) + 
   geom_linerange() + geom_point() + 
   theme(axis.line=element_blank(), axis.text.x=element_blank()) + 
-  ggtitle("FNR by insurance") +
+  ggtitle("FNRs for insurance") +
   geom_text(aes(x=group, y=0, label=label), show.legend=FALSE)
 ```
 
-![](Threshold-Adjustment-Playbook_files/figure-gfm/fnr_combo-4.png)<!-- -->
+![](Threshold-Adjustment-Playbook_files/figure-gfm/eod-4.png)<!-- -->
 
-#### Here are a few measures of disparity to help us think through which biases we will prioritize for mitigation
+## Assess Fairness across Classes to Identify “Most Biased” Class
 
-- “big” = absolute value of the biggest difference between a subgroup
-  and the reference group’s fairness metric in a given class
+Often, models will show evidence of bias within multiple classes. To
+start adjusting thresholds, we need to prioritize one class which
+reports the “most” bias. Looking at a panel of summary measures can
+highlight overarching patterns to help us decide how to make these
+decisions. In the following table, we see measures quantifying equal
+opportunity difference (“disparity”) between subgroups and their
+associated reference group across our classes of interest. The worst
+performing class is highlighted in red for each statistic, which are
+defined as follows:
+
+- ‘big’ = absolute value of the biggest difference between a subgroup’s
+  FNR and the reference group’s FNR
 - “avg” = absolute value of the average of the differences between every
-  subgroup and the reference group’s fairness metric in a given class
-- “avg_pop_adj” = absolute value of the average of the differences
-  between every subgroup and the reference group’s fairness metric in a
-  given class, adjusted for population size by multiplying each
-  subgroup’s absolute value of the difference from the reference group’s
-  fairness metric by that subgroup’s size, adding them together, and
-  dividing by the size of the total population (including referent
-  group)
-- “five_pp” = percent of sub-groups with an absolute difference from
-  reference group’s fairness metric greater than 5% (5 percentage
-  points)
+  subgroup and the reference group’s FNR
+- “avg_pop_adj” = absolute value of the weighted average of the
+  differences between every subgroup and the reference group’s FNR
+- “five_pp” = percent of subgroups showing bias, or percent of subgroups
+  with FNR’s \>= 0.05 different from the referent’s FNR.
+
+You need to edit the following code chunk per your variables and
+referents, according to in-line comments:
 
 ``` r
-bias_output = tibble(
-  class = c("race", "sex", "language", "insurance"),
+disparity_table = tibble(
+  class = c("race", "sex", "language", "insurance"), # Edit according to your classes
   big = c(
-    (max(abs(FNR_race$eod))), 
-    (max(abs(FNR_sex$eod))), 
-    (max(abs(FNR_language$eod))), 
-    (max(abs(FNR_insurance$eod)))
+    (max(abs(EOD_race$eod))), # Edit according to your classes
+    (max(abs(EOD_sex$eod))), # Edit according to your classes
+    (max(abs(EOD_language$eod))), # Edit according to your classes
+    (max(abs(EOD_insurance$eod))) # Edit according to your classes
     ),
   avg = c(
-    (sum(FNR_race$eod)/7), #AUTOMATE
-    (sum(FNR_sex$eod)/1), #AUTOMATE
-    (sum(FNR_language$eod)/2), #AUTOMATE
-    (sum(FNR_insurance$eod)/6) #AUTOMATE
-  ),
+    sum(EOD_race$eod) / (n_distinct(EOD_race$group) - 1),  # Edit according to your classes
+    sum(EOD_sex$eod) / (n_distinct(EOD_sex$group) - 1),      # Edit according to your classes
+    sum(EOD_language$eod) / (n_distinct(EOD_language$group) - 1),  # Edit according to your classes
+    sum(EOD_insurance$eod) / (n_distinct(EOD_insurance$group) - 1)), # Edit according to your classes
   avg_pop_adj = 
     c(
-    (FNR_race %>% filter(group != 'Hispanic') %>% summarize(weighted_sum = sum(eod * total), total_sum = sum(total)) %>% mutate(final_result = weighted_sum / total_sum) %>% pull(final_result)), 
-    (FNR_sex %>% filter(group != 'Female') %>% summarize(weighted_sum = sum(eod * total), total_sum = sum(total)) %>% mutate(final_result = weighted_sum / total_sum) %>% pull(final_result)),
-    (FNR_language %>% filter(group != 'English') %>% summarize(weighted_sum = sum(eod * total), total_sum = sum(total)) %>% mutate(final_result = weighted_sum / total_sum) %>% pull(final_result)),
-    (FNR_insurance %>% filter(group != 'Medicaid') %>% summarize(weighted_sum = sum(eod * total), total_sum = sum(total)) %>% mutate(final_result = weighted_sum / total_sum) %>% pull(final_result))
+    (EOD_race %>% filter(group != 'Hispanic') %>% summarize(weighted_sum = sum(eod * total), total_sum = sum(total)) %>% mutate(final_result = weighted_sum / total_sum) %>% pull(final_result)), # Replace the value of group != to your reference group for this class
+    (EOD_sex %>% filter(group != 'Female') %>% summarize(weighted_sum = sum(eod * total), total_sum = sum(total)) %>% mutate(final_result = weighted_sum / total_sum) %>% pull(final_result)), # Replace the value of group != to your reference group for this class
+    (EOD_language %>% filter(group != 'English') %>% summarize(weighted_sum = sum(eod * total), total_sum = sum(total)) %>% mutate(final_result = weighted_sum / total_sum) %>% pull(final_result)), # Replace the value of group != to your reference group for this class
+    (EOD_insurance %>% filter(group != 'Medicaid') %>% summarize(weighted_sum = sum(eod * total), total_sum = sum(total)) %>% mutate(final_result = weighted_sum / total_sum) %>% pull(final_result)) # Replace the value of group != to your reference group for this class
     ),
   five_pp = c(
-    (nrow(FNR_race %>% filter(five_pp_diff == "BIAS")))/(nrow(FNR_race %>% filter(eod > 0)))*100,
-    (nrow(FNR_sex %>% filter(five_pp_diff == "BIAS")))/(nrow(FNR_sex%>% filter(eod > 0)))*100,
-    (nrow(FNR_language %>% filter(five_pp_diff == "BIAS")))/(nrow(FNR_language%>% filter(eod > 0)))*100,
-    (nrow(FNR_insurance %>% filter(five_pp_diff == "BIAS")))/(nrow(FNR_insurance%>% filter(eod > 0)))*100
+    (nrow(EOD_race %>% filter(five_pp_diff == "BIAS")))/(nrow(EOD_race %>% filter(eod > 0)))*100, # Edit according to your classes
+    (nrow(EOD_sex %>% filter(five_pp_diff == "BIAS")))/(nrow(EOD_sex%>% filter(eod > 0)))*100, # Edit according to your classes
+    (nrow(EOD_language %>% filter(five_pp_diff == "BIAS")))/(nrow(EOD_language%>% filter(eod > 0)))*100, # Edit according to your classes
+    (nrow(EOD_insurance %>% filter(five_pp_diff == "BIAS")))/(nrow(EOD_insurance%>% filter(eod > 0)))*100 # Edit according to your classes
     ) 
 )
 
-
-bias_output = bias_output %>% 
+disparity_table = disparity_table %>% 
   mutate(across(where(is.numeric),~ round(.,3))) %>%
   mutate(across(where(is.numeric), ~ ifelse(. == max(.), paste0("<span style='color: red;'>", ., "</span>"), .)))
 
-knitr::kable(bias_output, caption = "Measures of Disparity using Equal Opportunity (FNR)", col.names = c(
+knitr::kable(disparity_table, caption = "Equal Opportunity Disparity Table", col.names = c(
  "Class",
  "Biggest Abs EOD",
  "Abs Avg EOD",
@@ -2264,15 +1424,27 @@ knitr::kable(bias_output, caption = "Measures of Disparity using Equal Opportuni
 | language  | 0.027                                  | 0.014                                  | 0.014                                  | <span style="color: red;">0</span> |
 | insurance | 0.04                                   | <span style="color: red;">0.026</span> | <span style="color: red;">0.026</span> | <span style="color: red;">0</span> |
 
-Measures of Disparity using Equal Opportunity (FNR)
+Equal Opportunity Disparity Table
 
-------------------------------------------------------------------------
+The class with the biggest burden of bias according to the table should
+be prioritized for mitigation in Step 3.
+\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
 
 # Step 3: Mitigate Bias
 
 <img src="step3.png" width="100%" />
 
-#### Let’s find subgroup-specific thresholds that move their FNR’s as close as possible to the FNR of our reference group:
+## Identify Group-Specific Thresholds That Improve Equal Opportunity
+
+Threshold adjustment sets a custom risk score threshold for each group
+within one class. Our goal is to select the group-specific thresholds
+which maximize fairness without drastically changing our alert rate or
+accuracy. To do this, we set the referent group’s FNR as the goal. The
+code finds the threshold that yields an FNR closest to the referent’s
+for each other subgroup, to minimize total equal opportunity difference.
+
+You will need to set your class and reference group values where
+indicated in-line:
 
 ``` r
 # Function to calculate FNR
@@ -2284,7 +1456,7 @@ calculate_fnr <- function(predicted, actual, threshold) {
   return(fnr)
 }
 
-# Function to find the optimal threshold for Race
+# Function to find the optimal threshold 
 find_optimal_threshold <- function(data, reference_fnr, protected_class_value, protected_class_col,whichScore) {
   thresholds <- seq(0, 1, by = 0.01)
   fnr_diffs <- sapply(thresholds, function(threshold) {
@@ -2316,7 +1488,7 @@ find_optimal_threshold <- function(data, reference_fnr, protected_class_value, p
 predictive_model_data <- BIA
 
 # Set the protected class column name to the class identified as having the most bias in Step 2. 
-protected_class_col <- 'race'
+protected_class_col <- 'race' 
 
 # Set the baseline threshold value as the threshold for the reference class.
 reference_threshold <- .15
@@ -2324,10 +1496,7 @@ reference_threshold <- .15
 # Set the reference group to calculate its FNR
 reference_class <- 'Hispanic'
 
-
-reference_fnr <- calculate_fnr(predictive_model_data$proba[predictive_model_data[[protected_class_col]] == reference_class],
-                               predictive_model_data$label_value[predictive_model_data[[protected_class_col]] == reference_class],
-                               reference_threshold)  
+reference_fnr <- calculate_fnr(predictive_model_data$proba[predictive_model_data[[protected_class_col]] == reference_class],predictive_model_data$label_value[predictive_model_data[[protected_class_col]] == reference_class],reference_threshold)  
 
 # Find optimal thresholds for each protected class value
 protected_classes <- unique(predictive_model_data[[protected_class_col]])
@@ -2354,8 +1523,16 @@ Subgroup Thresholds
 ``` r
 # Convert optimal_thresholds to a named vector
 optimal_thresholds <- setNames(optimal_thresholds, protected_classes)
+```
 
-# Add a new column with the predicted outcome based on the new optimal thresholds
+## Update Predictions Using Your Adjusted Threshold to Prepare for Mitigation Assessment
+
+We create an updated binary prediction variable to reflect our updated
+thresholds. We can think of this as “label flipping,” since some scores
+previously categorized as low risk (0) are now categorized as high risk
+(1).
+
+``` r
 BIA <- BIA %>%
   mutate(
     new_label = case_when(
@@ -2368,8 +1545,9 @@ BIA <- BIA %>%
     )
 ```
 
+We count our label flips to get a sense of the changes happening.
+
 ``` r
-#### Count how many labels were flipped.
 flips <- BIA %>%
   group_by(race) %>%
   summarise(
@@ -2377,7 +1555,6 @@ flips <- BIA %>%
     one_to_zero = sum(old_label > new_label),
     zero_to_one = sum(old_label < new_label)
   ) %>%
-  # Add a row for the total
   add_row(
     race = "Total",  # Label for the total row
     count_changes = sum(BIA$old_label != BIA$new_label),
@@ -2400,235 +1577,190 @@ flips
     ## 8 White                       298           0         298
     ## 9 Total                       868           0         868
 
+------------------------------------------------------------------------
+
 # Step 4: Assess Mitigation Success
 
 <img src="step4.png" width="100%" />
 
+## Assess Model Accuracy and Alert Rate with Updated Thresholds
+
+We want to know if our updated thresholds have impacted model accuracy
+and alert rate. If we reduced bias but no longer offer valuable
+predictions, we should not implement the adjusted model. Although there
+are no hard rules, we are hoping to see that our threshold adjustment
+has not markedly decreased our overall accuracy by more than 5% or
+changed our alert rate by more than 20%. In some cases, more dramatic
+changes in accuracy or alert rate may be tolerable to improve fairness.
+
+First, we’ll calculate accuracy.
+
 ``` r
-#### Let's look at confusion matrix values for every subgroup of all our classes. 
-calculate_metrics <- function(data) {
-  tp <- sum(data$label_value == 1 & data$new_label == 1)
-  tn <- sum(data$label_value == 0 & data$new_label == 0)
-  fp <- sum(data$label_value == 0 & data$new_label == 1)
-  fn <- sum(data$label_value == 1 & data$new_label == 0)
-  
-  tpr <- tp / (tp + fn)    # True Positive Rate
-  tnr <- tn / (tn + fp)    # True Negative Rate
-  fpr <- fp / (fp + tn)    # False Positive Rate
-  fnr <- fn / (fn + tp)    # False Negative Rate
-  ppv <- tp / (tp + fp)    # Positive Predictive Value
-  
-  return(c(FNR = fnr, FPR = fpr, TPR = tpr, TNR = tnr, PPV = ppv))
+# Function to calculate baseline accuracy score
+accuracy_score <- function(label_value, old_label, normalize = TRUE, sample_weight = NULL) {
+  # Check if label_value and old_label are the same length
+  if (length(label_value) != length(old_label)) {
+    stop("label_value and old_label must have the same length")
+  }
+  if (is.matrix(label_value) || is.matrix(old_label)) {
+    differing_labels <- rowSums(label_value != old_label)
+    score <- as.numeric(differing_labels == 0)
+  } else {
+    score <- label_value == old_label
+  }
+  if (!is.null(sample_weight)) {
+    score <- score * sample_weight
+    total_weight <- sum(sample_weight)
+    return(if (normalize) sum(score) / total_weight else sum(score))
+  } else {
+    return(if (normalize) mean(score) else sum(score))
+  }
 }
 
-# Calculate metrics for each subgroup
-metrics_by_race <- BIA %>%
-  group_by(race) %>%
-  summarise(metrics = list(calculate_metrics(cur_data()))) %>%
-  unnest_wider(metrics)
-metrics_by_sex <- BIA %>%
-  group_by(sex) %>%
-  summarise(metrics = list(calculate_metrics(cur_data()))) %>%
-  unnest_wider(metrics)
-metrics_by_language <- BIA %>%
-  group_by(language) %>%
-  summarise(metrics = list(calculate_metrics(cur_data()))) %>%
-  unnest_wider(metrics)
-metrics_by_insurance <- BIA %>%
-  group_by(insurance) %>%
-  summarise(metrics = list(calculate_metrics(cur_data()))) %>%
-  unnest_wider(metrics)
-
-#### We also want to be able to compare them to baseline
-calculate_baseline <- function(data) {
-  tp <- sum(data$label_value == 1 & data$old_label == 1)
-  tn <- sum(data$label_value == 0 & data$old_label == 0)
-  fp <- sum(data$label_value == 0 & data$old_label == 1)
-  fn <- sum(data$label_value == 1 & data$old_label == 0)
-  
-  tpr <- tp / (tp + fn)    # True Positive Rate
-  tnr <- tn / (tn + fp)    # True Negative Rate
-  fpr <- fp / (fp + tn)    # False Positive Rate
-  fnr <- fn / (fn + tp)    # False Negative Rate
-  ppv <- tp / (tp + fp)    # Positive Predictive Value
-  
-  return(c(FNR = fnr, FPR = fpr, TPR = tpr, TNR = tnr, PPV = ppv))
+# Function to calculate adjusted accuracy score
+accuracy_score <- function(label_value, new_label, normalize = TRUE, sample_weight = NULL) {
+  # Check if label_value and new_label are the same length
+  if (length(label_value) != length(new_label)) {
+    stop("label_value and new_label must have the same length")
+  }
+  if (is.matrix(label_value) || is.matrix(new_label)) {
+    differing_labels <- rowSums(label_value != new_label)
+    score <- as.numeric(differing_labels == 0)
+  } else {
+    score <- label_value == new_label
+  }
+  if (!is.null(sample_weight)) {
+    score <- score * sample_weight
+    total_weight <- sum(sample_weight)
+    return(if (normalize) sum(score) / total_weight else sum(score))
+  } else {
+    return(if (normalize) mean(score) else sum(score))
+  }
 }
 
-# Calculate metrics for each subgroup
-metrics_by_race_baseline <- BIA %>%
-  group_by(race) %>%
-  summarise(metrics = list(calculate_baseline(cur_data()))) %>%
-  unnest_wider(metrics)
-metrics_by_sex_baseline <- BIA %>%
-  group_by(sex) %>%
-  summarise(metrics = list(calculate_baseline(cur_data()))) %>%
-  unnest_wider(metrics)
-metrics_by_language_baseline <- BIA %>%
-  group_by(language) %>%
-  summarise(metrics = list(calculate_baseline(cur_data()))) %>%
-  unnest_wider(metrics)
-metrics_by_insurance_baseline <- BIA %>%
-  group_by(insurance) %>%
-  summarise(metrics = list(calculate_baseline(cur_data()))) %>%
-  unnest_wider(metrics)
+# Use the functions to get accuracy scores
+baseline_accuracy = accuracy_score(BIA$label_value, BIA$old_label)
+adjusted_accuracy = accuracy_score(BIA$label_value, BIA$new_label)
+
+# Print the accuracy scores
+print(paste("Baseline Accuracy Score:", baseline_accuracy))
 ```
 
+    ## [1] "Baseline Accuracy Score: 0.64536"
+
 ``` r
-# Print the results
-knitr::kable(metrics_by_race, caption = "Race adjusted")
+print(paste("Adjusted Accuracy Score:", adjusted_accuracy))
 ```
 
-| race              |       FNR |       FPR |       TPR |       TNR |       PPV |
-|:------------------|----------:|----------:|----------:|----------:|----------:|
-| African American  | 0.6417910 | 0.3681980 | 0.3582090 | 0.6318020 | 0.0812183 |
-| Asian             | 0.6408730 | 0.3318701 | 0.3591270 | 0.6681299 | 0.0873974 |
-| Hispanic          | 0.6573876 | 0.3247316 | 0.3426124 | 0.6752684 | 0.0786241 |
-| Native American   | 0.6771654 | 0.3269162 | 0.3228346 | 0.6730838 | 0.0820821 |
-| Something Else    | 0.6659751 | 0.3201540 | 0.3340249 | 0.6798460 | 0.0808639 |
-| Two or more races | 0.6593186 | 0.3861077 | 0.3406814 | 0.6138923 | 0.0708629 |
-| Unknown           | 0.6377119 | 0.3307386 | 0.3622881 | 0.6692614 | 0.0820931 |
-| White             | 0.6454918 | 0.3740511 | 0.3545082 | 0.6259489 | 0.0739000 |
+    ## [1] "Adjusted Accuracy Score: 0.63012"
 
-Race adjusted
+Second, we’ll put our accuracy scores in a table and also calculate
+alert rate changes. You don’t need to edit the following code chunk if
+your nomenclature has been the same as ours up to this point.
 
 ``` r
-knitr::kable(metrics_by_race_baseline, caption = "Race baseline")
-```
-
-| race              |       FNR |       FPR |       TPR |       TNR |       PPV |
-|:------------------|----------:|----------:|----------:|----------:|----------:|
-| African American  | 0.6753731 | 0.3261570 | 0.3246269 | 0.6738430 | 0.0829361 |
-| Asian             | 0.6408730 | 0.3318701 | 0.3591270 | 0.6681299 | 0.0873974 |
-| Hispanic          | 0.6573876 | 0.3247316 | 0.3426124 | 0.6752684 | 0.0786241 |
-| Native American   | 0.6771654 | 0.3269162 | 0.3228346 | 0.6730838 | 0.0820821 |
-| Something Else    | 0.6659751 | 0.3201540 | 0.3340249 | 0.6798460 | 0.0808639 |
-| Two or more races | 0.7014028 | 0.3370864 | 0.2985972 | 0.6629136 | 0.0711217 |
-| Unknown           | 0.6377119 | 0.3307386 | 0.3622881 | 0.6692614 | 0.0820931 |
-| White             | 0.6741803 | 0.3250518 | 0.3258197 | 0.6749482 | 0.0778267 |
-
-Race baseline
-
-``` r
-knitr::kable(metrics_by_sex, caption = "Sex adjusted")
-```
-
-| sex    |       FNR |       FPR |       TPR |       TNR |       PPV |
-|:-------|----------:|----------:|----------:|----------:|----------:|
-| Female | 0.6480198 | 0.3441621 | 0.3519802 | 0.6558379 | 0.0827418 |
-| Male   | 0.6585744 | 0.3469017 | 0.3414256 | 0.6530983 | 0.0760732 |
-
-Sex adjusted
-
-``` r
-knitr::kable(metrics_by_sex_baseline, caption = "Sex baseline")
-```
-
-| sex    |       FNR |       FPR |       TPR |       TNR |       PPV |
-|:-------|----------:|----------:|----------:|----------:|----------:|
-| Female | 0.6623762 | 0.3278753 | 0.3376238 | 0.6721247 | 0.0832621 |
-| Male   | 0.6709711 | 0.3278023 | 0.3290289 | 0.6721977 | 0.0774656 |
-
-Sex baseline
-
-``` r
-knitr::kable(metrics_by_language, caption = "Language adjusted")
-```
-
-| language |       FNR |       FPR |       TPR |       TNR |       PPV |
-|:---------|----------:|----------:|----------:|----------:|----------:|
-| English  | 0.6611866 | 0.3441917 | 0.3388134 | 0.6558083 | 0.0812897 |
-| Other    | 0.6375380 | 0.3436045 | 0.3624620 | 0.6563955 | 0.0834208 |
-| Spanish  | 0.6607575 | 0.3488540 | 0.3392425 | 0.6511460 | 0.0734345 |
-
-Language adjusted
-
-``` r
-knitr::kable(metrics_by_language_baseline, caption = "Language baseline")
-```
-
-| language |       FNR |       FPR |       TPR |       TNR |       PPV |
-|:---------|----------:|----------:|----------:|----------:|----------:|
-| English  | 0.6754825 | 0.3273580 | 0.3245175 | 0.6726420 | 0.0818165 |
-| Other    | 0.6481763 | 0.3267554 | 0.3518237 | 0.6732446 | 0.0850009 |
-| Spanish  | 0.6760677 | 0.3294149 | 0.3239323 | 0.6705851 | 0.0741971 |
-
-Language baseline
-
-``` r
-knitr::kable(metrics_by_insurance, caption = "Insurance adjusted")
-```
-
-| insurance        |       FNR |       FPR |       TPR |       TNR |       PPV |
-|:-----------------|----------:|----------:|----------:|----------:|----------:|
-| Commercial       | 0.6587591 | 0.3403904 | 0.3412409 | 0.6596096 | 0.0762021 |
-| Medicaid         | 0.6685185 | 0.3422961 | 0.3314815 | 0.6577039 | 0.0732106 |
-| Medicare         | 0.6496350 | 0.3518914 | 0.3503650 | 0.6481086 | 0.0768307 |
-| No Fault         | 0.6465517 | 0.3491233 | 0.3534483 | 0.6508767 | 0.0828283 |
-| Other Government | 0.6724437 | 0.3433349 | 0.3275563 | 0.6566651 | 0.0792121 |
-| Self-Pay         | 0.6272085 | 0.3408989 | 0.3727915 | 0.6591011 | 0.0846030 |
-| Workers Comp     | 0.6499162 | 0.3509834 | 0.3500838 | 0.6490166 | 0.0826414 |
-
-Insurance adjusted
-
-``` r
-knitr::kable(metrics_by_insurance_baseline, caption = "Insurance baseline")
-```
-
-| insurance        |       FNR |       FPR |       TPR |       TNR |       PPV |
-|:-----------------|----------:|----------:|----------:|----------:|----------:|
-| Commercial       | 0.6678832 | 0.3231231 | 0.3321168 | 0.6768769 | 0.0779777 |
-| Medicaid         | 0.6888889 | 0.3274924 | 0.3111111 | 0.6725076 | 0.0719178 |
-| Medicare         | 0.6605839 | 0.3331300 | 0.3394161 | 0.6668700 | 0.0784810 |
-| No Fault         | 0.6603448 | 0.3311289 | 0.3396552 | 0.6688711 | 0.0838298 |
-| Other Government | 0.6828423 | 0.3234880 | 0.3171577 | 0.6765120 | 0.0812250 |
-| Self-Pay         | 0.6484099 | 0.3240257 | 0.3515901 | 0.6759743 | 0.0840017 |
-| Workers Comp     | 0.6582915 | 0.3325265 | 0.3417085 | 0.6674735 | 0.0849292 |
-
-Insurance baseline
-
-``` r
-# We also want to compare baseline and adjusted overall metrics, at the model level
-BIA_baseline = BIA %>% 
+alert_baseline = BIA %>% 
         summarize(total = n(), 
-                  pos = sum(label_value), neg = total - pos, # actual positive and actual negative
-                  pp = sum(old_label), pn = total - pp, # predicted P and N where total = P+N
-                  tp = sum((old_label + label_value) == 2), fp = pp - tp, # Predicted P = True + False P
-                  tn = sum((old_label + label_value) == 0), fn = pn - tn,
-                  neg_check = fp + tn, pos_check = tp + fn
-        ) %>% 
-        mutate(prev_percent = (round((pos/total) * 100, digits=4)),
-               alert_rate = pp/total, 
-               ppv_preCIsion = tp/pp,
-               npv = tn/pn, 
-               tpr_recall_sensitivity = tp/(pos),
-               tnr_specificity = tn/(neg), 
-               fpr_type1 = fp/(neg),
-               fnr_type2 = fn/(pos))
-
-BIA_adjusted = BIA %>% 
+                  pp = sum(old_label)) %>% 
+        mutate(alert_rate = pp/total)
+               
+alert_adjusted = BIA %>% 
         summarize(total = n(), 
-                  pos = sum(label_value), neg = total - pos, # actual positive and actual negative
-                  pp = sum(new_label), pn = total - pp, # predicted P and N where total = P+N
-                  tp = sum((new_label + label_value) == 2), fp = pp - tp, # Predicted P = True + False P
-                  tn = sum((new_label + label_value) == 0), fn = pn - tn,
-                  neg_check = fp + tn, pos_check = tp + fn
-        ) %>% 
-        mutate(prev_percent = (round((pos/total) * 100, digits=4)), 
-               alert_rate = pp/total, 
-               ppv_preCIsion = tp/pp,
-               npv = tn/pn, 
-               tpr_recall_sensitivity = tp/(pos),
-               tnr_specificity = tn/(neg), 
-               fpr_type1 = fp/(neg),
-               fnr_type2 = fn/(pos))
+                  pp = sum(new_label)) %>% 
+        mutate(alert_rate = pp/total)
+
+accuracy_alert = tibble(
+  model = c("Baseline", "Adjusted", "Percent Change"),
+  accuracy = c(baseline_accuracy, 
+               adjusted_accuracy, 
+               ((adjusted_accuracy - baseline_accuracy)/baseline_accuracy)*100),
+  alert_rate = c(alert_baseline$alert_rate, 
+                 alert_adjusted$alert_rate,
+                (((alert_adjusted$alert_rate - alert_baseline$alert_rate)/alert_baseline$alert_rate))*100))
+
+comparison = accuracy_alert %>%
+  mutate(accuracy = round(accuracy,2),
+         alert_rate = round(alert_rate, 2))
+
+knitr::kable(comparison, caption = "Accuracy and Alert Rate Changes", col.names = c(
+ "",
+ "Accuracy",
+ "Alert Rate"))  %>%
+  kableExtra::kable_styling(bootstrap_options = c("striped", "hover"), full_width = TRUE)
 ```
 
+<table class="table table-striped table-hover" style="margin-left: auto; margin-right: auto;">
+<caption>
+Accuracy and Alert Rate Changes
+</caption>
+<thead>
+<tr>
+<th style="text-align:left;">
+</th>
+<th style="text-align:right;">
+Accuracy
+</th>
+<th style="text-align:right;">
+Alert Rate
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left;">
+Baseline
+</td>
+<td style="text-align:right;">
+0.65
+</td>
+<td style="text-align:right;">
+0.33
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+Adjusted
+</td>
+<td style="text-align:right;">
+0.63
+</td>
+<td style="text-align:right;">
+0.35
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+Percent Change
+</td>
+<td style="text-align:right;">
+-2.36
+</td>
+<td style="text-align:right;">
+5.29
+</td>
+</tr>
+</tbody>
+</table>
+
+Check to see if both changes fall within our acceptable ranges (\<10%
+change in accuracy and \<20% change in alert rate). If yes, we can
+proceed to our second check.
+
+## Assess Fairness Improvement within Chosen Class
+
+We want to understand if our updated thresholds improved bias in the
+class that we identified. We re-generate the equal opportunity
+difference table we ran in Step 2 with our updated prediction labels.
+
 ``` r
-FNR_race = CIs %>% filter(!is.na(race)) %>% 
-  bias_check('fnr_ci', 'race', 'Hispanic', fairness_metric='FNR') %>% 
-  select('group','difference_check','outside_ci','directionality','five_pp_diff','ci_check','composite_check', 'mean','lower','upper','pos','total','prev','delta_sign','eod','lower_outside','upper_outside','p_value','prev_delta_sign') 
-knitr::kable(FNR_race, caption = "BIA FNR metrics by race, thresholds adjusted", digits=4) %>%
+adj_EOD_race = CIs %>% filter(!is.na(race), threshold == 0.15) %>% # If you defined multiple thresholds in Step 1, list the one you want to use for analysis here.
+  bias_check('fnr_ci', 'race', 'Hispanic', fairness_metric='FNR') %>% # If you are using different sensitive variables than we are, change the second value to your first variable of interest; change the third value to its reference group. 
+  mutate(
+    five_pp_diff = if_else(group == 'Hispanic', "REF", five_pp_diff) # Replace the value of 'group' with your reference group
+  ) %>%  
+  select('group','mean','eod','five_pp_diff','total','pos','prev') %>%
+  rename('fnr' = mean) 
+knitr::kable(EOD_race, caption = "Adjusted Equal Opportunity Differences, Race", digits=4) %>%
   kableExtra::kable_styling() %>%
   kableExtra::column_spec(2:4, background = "lightgray") %>%
   kableExtra::column_spec(5:7, background = "darkgray")
@@ -2636,66 +1768,30 @@ knitr::kable(FNR_race, caption = "BIA FNR metrics by race, thresholds adjusted",
 
 <table class="table" style="margin-left: auto; margin-right: auto;">
 <caption>
-BIA FNR metrics by race, thresholds adjusted
+Adjusted Equal Opportunity Differences, Race
 </caption>
 <thead>
 <tr>
 <th style="text-align:left;">
 group
 </th>
-<th style="text-align:left;">
-difference_check
-</th>
-<th style="text-align:left;">
-outside_ci
-</th>
-<th style="text-align:left;">
-directionality
-</th>
-<th style="text-align:left;">
-five_pp_diff
-</th>
-<th style="text-align:left;">
-ci_check
-</th>
-<th style="text-align:left;">
-composite_check
-</th>
 <th style="text-align:right;">
-mean
-</th>
-<th style="text-align:right;">
-lower
-</th>
-<th style="text-align:right;">
-upper
-</th>
-<th style="text-align:right;">
-pos
-</th>
-<th style="text-align:right;">
-total
-</th>
-<th style="text-align:right;">
-prev
-</th>
-<th style="text-align:right;">
-delta_sign
+fnr
 </th>
 <th style="text-align:right;">
 eod
 </th>
 <th style="text-align:left;">
-lower_outside
-</th>
-<th style="text-align:left;">
-upper_outside
+five_pp_diff
 </th>
 <th style="text-align:right;">
-p_value
+total
 </th>
 <th style="text-align:right;">
-prev_delta_sign
+pos
+</th>
+<th style="text-align:right;">
+prev
 </th>
 </tr>
 </thead>
@@ -2704,966 +1800,210 @@ prev_delta_sign
 <td style="text-align:left;">
 African American
 </td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-NA
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:right;">
-0.3433
-</td>
-<td style="text-align:right;">
-0.3043
-</td>
-<td style="text-align:right;">
-0.3845
-</td>
-<td style="text-align:right;">
-536
-</td>
-<td style="text-align:right;">
-6435
-</td>
-<td style="text-align:right;">
-0.0833
-</td>
-<td style="text-align:right;">
-1
-</td>
-<td style="text-align:right;">
-0.0264
-</td>
-<td style="text-align:left;">
-FALSE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:right;">
-0.0832
-</td>
-<td style="text-align:right;">
-0
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-Asian
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-TRUE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-NA
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:right;">
-0.3433
-</td>
-<td style="text-align:right;">
-0.3031
-</td>
-<td style="text-align:right;">
-0.3858
-</td>
-<td style="text-align:right;">
-504
-</td>
-<td style="text-align:right;">
-6199
-</td>
-<td style="text-align:right;">
-0.0813
-</td>
-<td style="text-align:right;">
--1
-</td>
-<td style="text-align:right;">
-0.3141
-</td>
-<td style="text-align:left;">
-FALSE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:right;">
-0.1893
-</td>
-<td style="text-align:right;">
-0
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-Hispanic
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-NA
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:right;">
-0.3169
-</td>
-<td style="text-align:right;">
-0.2763
-</td>
-<td style="text-align:right;">
-0.3605
-</td>
-<td style="text-align:right;">
-467
-</td>
-<td style="text-align:right;">
-6241
-</td>
-<td style="text-align:right;">
-0.0748
-</td>
-<td style="text-align:right;">
-0
-</td>
-<td style="text-align:right;">
-0.0000
-</td>
-<td style="text-align:left;">
-FALSE
-</td>
-<td style="text-align:left;">
-FALSE
-</td>
-<td style="text-align:right;">
-1.0000
-</td>
-<td style="text-align:right;">
-0
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-Native American
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-TRUE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-NA
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:right;">
-0.3228
-</td>
-<td style="text-align:right;">
-0.2836
-</td>
-<td style="text-align:right;">
-0.3647
-</td>
-<td style="text-align:right;">
-508
-</td>
-<td style="text-align:right;">
-6118
-</td>
-<td style="text-align:right;">
-0.0830
-</td>
-<td style="text-align:right;">
--1
-</td>
-<td style="text-align:right;">
-0.3346
-</td>
-<td style="text-align:left;">
-FALSE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:right;">
-0.0972
-</td>
-<td style="text-align:right;">
-0
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-Something Else
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-NA
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:right;">
-0.3154
-</td>
-<td style="text-align:right;">
-0.2754
-</td>
-<td style="text-align:right;">
-0.3582
-</td>
-<td style="text-align:right;">
-482
-</td>
-<td style="text-align:right;">
-6198
-</td>
-<td style="text-align:right;">
-0.0778
-</td>
-<td style="text-align:right;">
--1
-</td>
-<td style="text-align:right;">
-0.0016
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-FALSE
-</td>
-<td style="text-align:right;">
-0.5594
-</td>
-<td style="text-align:right;">
-0
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-Two or more races
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-TRUE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-NA
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:right;">
-0.3647
-</td>
-<td style="text-align:right;">
-0.3237
-</td>
-<td style="text-align:right;">
-0.4079
-</td>
-<td style="text-align:right;">
-499
-</td>
-<td style="text-align:right;">
-6272
-</td>
-<td style="text-align:right;">
-0.0796
-</td>
-<td style="text-align:right;">
--1
-</td>
-<td style="text-align:right;">
-0.2927
-</td>
-<td style="text-align:left;">
-FALSE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:right;">
-0.3380
-</td>
-<td style="text-align:right;">
-0
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-Unknown
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-NA
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:right;">
-0.3220
-</td>
-<td style="text-align:right;">
-0.2814
-</td>
-<td style="text-align:right;">
-0.3655
-</td>
-<td style="text-align:right;">
-472
-</td>
-<td style="text-align:right;">
-6253
-</td>
-<td style="text-align:right;">
-0.0755
-</td>
-<td style="text-align:right;">
-1
-</td>
-<td style="text-align:right;">
-0.0051
-</td>
-<td style="text-align:left;">
-FALSE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:right;">
-0.9163
-</td>
-<td style="text-align:right;">
-0
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-White
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-TRUE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-NA
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:right;">
-0.3463
-</td>
-<td style="text-align:right;">
-0.3054
-</td>
-<td style="text-align:right;">
-0.3896
-</td>
-<td style="text-align:right;">
-488
-</td>
-<td style="text-align:right;">
-6284
-</td>
-<td style="text-align:right;">
-0.0777
-</td>
-<td style="text-align:right;">
--1
-</td>
-<td style="text-align:right;">
-0.3111
-</td>
-<td style="text-align:left;">
-FALSE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:right;">
-0.5734
-</td>
-<td style="text-align:right;">
-0
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-African American
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-TRUE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-TRUE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-NA
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-BIAS
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.6754
 </td>
-<td style="text-align:right;">
-0.6346
+<td style="text-align:right;background-color: lightgray !important;">
+0.0180
 </td>
-<td style="text-align:right;">
-0.7137
+<td style="text-align:left;background-color: lightgray !important;">
+NO BIAS
 </td>
-<td style="text-align:right;">
-536
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: darkgray !important;">
 6435
 </td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: darkgray !important;">
+536
+</td>
+<td style="text-align:right;background-color: darkgray !important;">
 0.0833
-</td>
-<td style="text-align:right;">
-1
-</td>
-<td style="text-align:right;">
-0.3585
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:right;">
-0.0832
-</td>
-<td style="text-align:right;">
-0
 </td>
 </tr>
 <tr>
 <td style="text-align:left;">
 Asian
 </td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-TRUE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-NA
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.6409
 </td>
-<td style="text-align:right;">
-0.5981
-</td>
-<td style="text-align:right;">
-0.6816
-</td>
-<td style="text-align:right;">
-504
-</td>
-<td style="text-align:right;">
-6199
-</td>
-<td style="text-align:right;">
-0.0813
-</td>
-<td style="text-align:right;">
--1
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.0165
 </td>
-<td style="text-align:left;">
-TRUE
+<td style="text-align:left;background-color: lightgray !important;">
+NO BIAS
 </td>
-<td style="text-align:left;">
-TRUE
+<td style="text-align:right;background-color: darkgray !important;">
+6199
 </td>
-<td style="text-align:right;">
-0.1893
+<td style="text-align:right;background-color: darkgray !important;">
+504
 </td>
-<td style="text-align:right;">
-0
+<td style="text-align:right;background-color: darkgray !important;">
+0.0813
 </td>
 </tr>
 <tr>
 <td style="text-align:left;">
 Hispanic
 </td>
-<td style="text-align:left;background-color: lightgray !important;">
-TRUE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-TRUE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-NA
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-BIAS
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.6574
 </td>
-<td style="text-align:right;">
-0.6132
+<td style="text-align:right;background-color: lightgray !important;">
+0.0000
 </td>
-<td style="text-align:right;">
-0.6990
+<td style="text-align:left;background-color: lightgray !important;">
+REF
 </td>
-<td style="text-align:right;">
-467
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: darkgray !important;">
 6241
 </td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: darkgray !important;">
+467
+</td>
+<td style="text-align:right;background-color: darkgray !important;">
 0.0748
-</td>
-<td style="text-align:right;">
-1
-</td>
-<td style="text-align:right;">
-0.3405
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:right;">
-1.0000
-</td>
-<td style="text-align:right;">
-0
 </td>
 </tr>
 <tr>
 <td style="text-align:left;">
 Native American
 </td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-TRUE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-NA
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.6772
 </td>
-<td style="text-align:right;">
-0.6353
-</td>
-<td style="text-align:right;">
-0.7164
-</td>
-<td style="text-align:right;">
-508
-</td>
-<td style="text-align:right;">
-6118
-</td>
-<td style="text-align:right;">
-0.0830
-</td>
-<td style="text-align:right;">
-1
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.0198
 </td>
-<td style="text-align:left;">
-TRUE
+<td style="text-align:left;background-color: lightgray !important;">
+NO BIAS
 </td>
-<td style="text-align:left;">
-TRUE
+<td style="text-align:right;background-color: darkgray !important;">
+6118
 </td>
-<td style="text-align:right;">
-0.0972
+<td style="text-align:right;background-color: darkgray !important;">
+508
 </td>
-<td style="text-align:right;">
-0
+<td style="text-align:right;background-color: darkgray !important;">
+0.0830
 </td>
 </tr>
 <tr>
 <td style="text-align:left;">
 Something Else
 </td>
-<td style="text-align:left;background-color: lightgray !important;">
-TRUE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-TRUE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-NA
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-BIAS
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.6660
 </td>
-<td style="text-align:right;">
-0.6227
+<td style="text-align:right;background-color: lightgray !important;">
+0.0086
 </td>
-<td style="text-align:right;">
-0.7066
+<td style="text-align:left;background-color: lightgray !important;">
+NO BIAS
 </td>
-<td style="text-align:right;">
-482
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: darkgray !important;">
 6198
 </td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: darkgray !important;">
+482
+</td>
+<td style="text-align:right;background-color: darkgray !important;">
 0.0778
-</td>
-<td style="text-align:right;">
-1
-</td>
-<td style="text-align:right;">
-0.3491
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:right;">
-0.5594
-</td>
-<td style="text-align:right;">
-0
 </td>
 </tr>
 <tr>
 <td style="text-align:left;">
 Two or more races
 </td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-TRUE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-NA
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.7014
 </td>
-<td style="text-align:right;">
-0.6598
-</td>
-<td style="text-align:right;">
-0.7399
-</td>
-<td style="text-align:right;">
-499
-</td>
-<td style="text-align:right;">
-6272
-</td>
-<td style="text-align:right;">
-0.0796
-</td>
-<td style="text-align:right;">
-1
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.0440
 </td>
-<td style="text-align:left;">
-TRUE
+<td style="text-align:left;background-color: lightgray !important;">
+NO BIAS
 </td>
-<td style="text-align:left;">
-TRUE
+<td style="text-align:right;background-color: darkgray !important;">
+6272
 </td>
-<td style="text-align:right;">
-0.3380
+<td style="text-align:right;background-color: darkgray !important;">
+499
 </td>
-<td style="text-align:right;">
-0
+<td style="text-align:right;background-color: darkgray !important;">
+0.0796
 </td>
 </tr>
 <tr>
 <td style="text-align:left;">
 Unknown
 </td>
-<td style="text-align:left;background-color: lightgray !important;">
-TRUE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-TRUE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-NA
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-BIAS
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.6377
 </td>
-<td style="text-align:right;">
-0.5934
+<td style="text-align:right;background-color: lightgray !important;">
+0.0197
 </td>
-<td style="text-align:right;">
-0.6798
+<td style="text-align:left;background-color: lightgray !important;">
+NO BIAS
 </td>
-<td style="text-align:right;">
-472
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: darkgray !important;">
 6253
 </td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: darkgray !important;">
+472
+</td>
+<td style="text-align:right;background-color: darkgray !important;">
 0.0755
-</td>
-<td style="text-align:right;">
-1
-</td>
-<td style="text-align:right;">
-0.3208
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:right;">
-0.9163
-</td>
-<td style="text-align:right;">
-0
 </td>
 </tr>
 <tr>
 <td style="text-align:left;">
 White
 </td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-TRUE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-NA
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.6742
 </td>
-<td style="text-align:right;">
-0.6314
+<td style="text-align:right;background-color: lightgray !important;">
+0.0168
 </td>
-<td style="text-align:right;">
-0.7143
+<td style="text-align:left;background-color: lightgray !important;">
+NO BIAS
 </td>
-<td style="text-align:right;">
-488
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: darkgray !important;">
 6284
 </td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: darkgray !important;">
+488
+</td>
+<td style="text-align:right;background-color: darkgray !important;">
 0.0777
 </td>
-<td style="text-align:right;">
-1
-</td>
-<td style="text-align:right;">
-0.0168
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:right;">
-0.5734
-</td>
-<td style="text-align:right;">
-0
-</td>
 </tr>
 </tbody>
 </table>
 
 ``` r
-CIs %>% filter(!is.na(race)) %>% 
-  bias_check('fnr_ci', 'race', 'Hispanic', fairness_metric='FNR') %>% 
+CIs %>% filter(!is.na(race), threshold == 0.15) %>% # If you defined multiple thresholds in Step 1, list the one you want to use for analysis here.
+  bias_check('fnr_ci', 'race', 'Hispanic', fairness_metric='FNR') %>% # If you are using different sensitive variables than we are, change the second value to your first variable of interest; change the third value to its reference group. 
   mutate(label = paste0(as.character(round(prev*100, 1)), '%')) %>%
   ggplot(aes(x=group, y = mean, ymin = lower, ymax = upper, color = group)) + 
   geom_linerange() + geom_point() + 
   theme(axis.line=element_blank(), axis.text.x=element_blank()) + 
-  ggtitle("BIA FNR by race, thresholds adjusted") +
+  ggtitle("Adj FNRs for race") +
   geom_text(aes(x=group, y=0, label=label), show.legend=FALSE)
 ```
 
-![](Threshold-Adjustment-Playbook_files/figure-gfm/fnr_combo2-1.png)<!-- -->
+![](Threshold-Adjustment-Playbook_files/figure-gfm/adj_EOD-1.png)<!-- -->
 
 ``` r
-FNR_sex = CIs %>% filter(!is.na(sex)) %>% 
-  bias_check('fnr_ci', 'sex', 'Female', fairness_metric='FNR') %>% select('group','difference_check','outside_ci','directionality','five_pp_diff','ci_check','composite_check', 'mean','lower','upper','pos','total','prev','delta_sign','eod','lower_outside','upper_outside','p_value','prev_delta_sign') 
-knitr::kable(FNR_sex, caption = "BIA FNR metrics by sex, thresholds adjusted", digits=4) %>%
+adj_EOD_sex = CIs %>% filter(!is.na(sex), threshold == 0.15) %>% # If you defined multiple thresholds in Step 1, list the one you want to use for analysis here.
+  bias_check('fnr_ci', 'sex', 'Female', fairness_metric='FNR') %>% # If you are using different sensitive variables than we are, change the second value to your first variable of interest; change the third value to its reference group. 
+    mutate(
+    five_pp_diff = if_else(group == 'Female', "REF", five_pp_diff)) %>%  # Replace the value of 'group' with your reference group
+    select('group','mean','eod','five_pp_diff','total','pos','prev') %>%
+    rename('fnr' = mean) 
+knitr::kable(EOD_sex, caption = "Adjusted Equal Opportunity Differences, Sex", digits=4) %>%
   kableExtra::kable_styling() %>%
   kableExtra::column_spec(2:4, background = "lightgray") %>%
   kableExtra::column_spec(5:7, background = "darkgray")
@@ -3671,66 +2011,30 @@ knitr::kable(FNR_sex, caption = "BIA FNR metrics by sex, thresholds adjusted", d
 
 <table class="table" style="margin-left: auto; margin-right: auto;">
 <caption>
-BIA FNR metrics by sex, thresholds adjusted
+Adjusted Equal Opportunity Differences, Sex
 </caption>
 <thead>
 <tr>
 <th style="text-align:left;">
 group
 </th>
-<th style="text-align:left;">
-difference_check
-</th>
-<th style="text-align:left;">
-outside_ci
-</th>
-<th style="text-align:left;">
-directionality
-</th>
-<th style="text-align:left;">
-five_pp_diff
-</th>
-<th style="text-align:left;">
-ci_check
-</th>
-<th style="text-align:left;">
-composite_check
-</th>
 <th style="text-align:right;">
-mean
-</th>
-<th style="text-align:right;">
-lower
-</th>
-<th style="text-align:right;">
-upper
-</th>
-<th style="text-align:right;">
-pos
-</th>
-<th style="text-align:right;">
-total
-</th>
-<th style="text-align:right;">
-prev
-</th>
-<th style="text-align:right;">
-delta_sign
+fnr
 </th>
 <th style="text-align:right;">
 eod
 </th>
 <th style="text-align:left;">
-lower_outside
-</th>
-<th style="text-align:left;">
-upper_outside
+five_pp_diff
 </th>
 <th style="text-align:right;">
-p_value
+total
 </th>
 <th style="text-align:right;">
-prev_delta_sign
+pos
+</th>
+<th style="text-align:right;">
+prev
 </th>
 </tr>
 </thead>
@@ -3739,258 +2043,72 @@ prev_delta_sign
 <td style="text-align:left;">
 Female
 </td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-NA
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:right;">
-0.3337
-</td>
-<td style="text-align:right;">
-0.3134
-</td>
-<td style="text-align:right;">
-0.3545
-</td>
-<td style="text-align:right;">
-2020
-</td>
-<td style="text-align:right;">
-24922
-</td>
-<td style="text-align:right;">
-0.0811
-</td>
-<td style="text-align:right;">
-0
-</td>
-<td style="text-align:right;">
-0.0000
-</td>
-<td style="text-align:left;">
-FALSE
-</td>
-<td style="text-align:left;">
-FALSE
-</td>
-<td style="text-align:right;">
-1.0000
-</td>
-<td style="text-align:right;">
-0
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-Male
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-TRUE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-NA
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:right;">
-0.3357
-</td>
-<td style="text-align:right;">
-0.3150
-</td>
-<td style="text-align:right;">
-0.3571
-</td>
-<td style="text-align:right;">
-1936
-</td>
-<td style="text-align:right;">
-25078
-</td>
-<td style="text-align:right;">
-0.0772
-</td>
-<td style="text-align:right;">
--1
-</td>
-<td style="text-align:right;">
-0.3266
-</td>
-<td style="text-align:left;">
-FALSE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:right;">
-0.1142
-</td>
-<td style="text-align:right;">
-0
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-Female
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-TRUE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-TRUE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-NA
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-BIAS
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.6624
 </td>
-<td style="text-align:right;">
-0.6415
+<td style="text-align:right;background-color: lightgray !important;">
+0.0000
 </td>
-<td style="text-align:right;">
-0.6827
+<td style="text-align:left;background-color: lightgray !important;">
+REF
 </td>
-<td style="text-align:right;">
-2020
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: darkgray !important;">
 24922
 </td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: darkgray !important;">
+2020
+</td>
+<td style="text-align:right;background-color: darkgray !important;">
 0.0811
-</td>
-<td style="text-align:right;">
-1
-</td>
-<td style="text-align:right;">
-0.3287
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:right;">
-1.0000
-</td>
-<td style="text-align:right;">
-0
 </td>
 </tr>
 <tr>
 <td style="text-align:left;">
 Male
 </td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-TRUE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-NA
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.6710
 </td>
-<td style="text-align:right;">
-0.6497
-</td>
-<td style="text-align:right;">
-0.6915
-</td>
-<td style="text-align:right;">
-1936
-</td>
-<td style="text-align:right;">
-25078
-</td>
-<td style="text-align:right;">
-0.0772
-</td>
-<td style="text-align:right;">
-1
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.0086
 </td>
-<td style="text-align:left;">
-TRUE
+<td style="text-align:left;background-color: lightgray !important;">
+NO BIAS
 </td>
-<td style="text-align:left;">
-TRUE
+<td style="text-align:right;background-color: darkgray !important;">
+25078
 </td>
-<td style="text-align:right;">
-0.1142
+<td style="text-align:right;background-color: darkgray !important;">
+1936
 </td>
-<td style="text-align:right;">
-0
+<td style="text-align:right;background-color: darkgray !important;">
+0.0772
 </td>
 </tr>
 </tbody>
 </table>
 
 ``` r
-CIs %>% filter(!is.na(sex)) %>% 
-  bias_check('fnr_ci', 'sex', 'Female', fairness_metric='FNR') %>% 
+CIs %>% filter(!is.na(sex), threshold == 0.15) %>% # If you defined multiple thresholds in Step 1, list the one you want to use for analysis here.
+  bias_check('fnr_ci', 'sex', 'Female', fairness_metric='FNR') %>% # If you are using different sensitive variables than we are, change the second value to your first variable of interest; change the third value to its reference group. 
   mutate(label = paste0(as.character(round(prev*100, 1)), '%')) %>%
   ggplot(aes(x=group, y = mean, ymin = lower, ymax = upper, color = group)) + 
   geom_linerange() + geom_point() + 
   theme(axis.line=element_blank(), axis.text.x=element_blank()) + 
-  ggtitle("BIA FNR by sex, thresholds adjusted") +
+  ggtitle("Adj FNRs for sex") +
   geom_text(aes(x=group, y=0, label=label), show.legend=FALSE)
 ```
 
-![](Threshold-Adjustment-Playbook_files/figure-gfm/fnr_combo2-2.png)<!-- -->
+![](Threshold-Adjustment-Playbook_files/figure-gfm/adj_EOD-2.png)<!-- -->
 
 ``` r
-FNR_language = CIs %>% filter(!is.na(language)) %>% 
-  bias_check('fnr_ci', 'language', 'English', fairness_metric='FNR') %>% select('group','difference_check','outside_ci','directionality','five_pp_diff','ci_check','composite_check', 'mean','lower','upper','pos','total','prev','delta_sign','eod','lower_outside','upper_outside','p_value','prev_delta_sign') 
-knitr::kable(FNR_language, caption = "BIA FNR metrics by primary language, thresholds adjusted", digits=4) %>%
+adj_EOD_language = CIs %>% filter(!is.na(language), threshold == 0.15) %>% # If you defined multiple thresholds in Step 1, list the one you want to use for analysis here.
+  bias_check('fnr_ci', 'language', 'English', fairness_metric='FNR') %>% # If you are using different sensitive variables than we are, change the second value to your first variable of interest; change the third value to its reference group. 
+  mutate(
+    five_pp_diff = if_else(group == 'English', "REF", five_pp_diff) # Replace the value of 'group' with your reference group
+  ) %>%  
+  select('group','mean','eod','five_pp_diff','total','pos','prev') 
+knitr::kable(EOD_language, caption = "Adjusted Equal Opportunity Differences, Language", digits=4) %>%
   kableExtra::kable_styling() %>%
   kableExtra::column_spec(2:4, background = "lightgray") %>%
   kableExtra::column_spec(5:7, background = "darkgray")
@@ -3998,66 +2116,30 @@ knitr::kable(FNR_language, caption = "BIA FNR metrics by primary language, thres
 
 <table class="table" style="margin-left: auto; margin-right: auto;">
 <caption>
-BIA FNR metrics by primary language, thresholds adjusted
+Adjusted Equal Opportunity Differences, Language
 </caption>
 <thead>
 <tr>
 <th style="text-align:left;">
 group
 </th>
-<th style="text-align:left;">
-difference_check
-</th>
-<th style="text-align:left;">
-outside_ci
-</th>
-<th style="text-align:left;">
-directionality
-</th>
-<th style="text-align:left;">
-five_pp_diff
-</th>
-<th style="text-align:left;">
-ci_check
-</th>
-<th style="text-align:left;">
-composite_check
-</th>
 <th style="text-align:right;">
 mean
-</th>
-<th style="text-align:right;">
-lower
-</th>
-<th style="text-align:right;">
-upper
-</th>
-<th style="text-align:right;">
-pos
-</th>
-<th style="text-align:right;">
-total
-</th>
-<th style="text-align:right;">
-prev
-</th>
-<th style="text-align:right;">
-delta_sign
 </th>
 <th style="text-align:right;">
 eod
 </th>
 <th style="text-align:left;">
-lower_outside
-</th>
-<th style="text-align:left;">
-upper_outside
+five_pp_diff
 </th>
 <th style="text-align:right;">
-p_value
+total
 </th>
 <th style="text-align:right;">
-prev_delta_sign
+pos
+</th>
+<th style="text-align:right;">
+prev
 </th>
 </tr>
 </thead>
@@ -4066,376 +2148,95 @@ prev_delta_sign
 <td style="text-align:left;">
 English
 </td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-NA
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:right;">
-0.3338
-</td>
-<td style="text-align:right;">
-0.3096
-</td>
-<td style="text-align:right;">
-0.3590
-</td>
-<td style="text-align:right;">
-1399
-</td>
-<td style="text-align:right;">
-16963
-</td>
-<td style="text-align:right;">
-0.0825
-</td>
-<td style="text-align:right;">
-0
-</td>
-<td style="text-align:right;">
-0.0000
-</td>
-<td style="text-align:left;">
-FALSE
-</td>
-<td style="text-align:left;">
-FALSE
-</td>
-<td style="text-align:right;">
-1.0000
-</td>
-<td style="text-align:right;">
-0
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-Other
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-TRUE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-NA
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:right;">
-0.3488
-</td>
-<td style="text-align:right;">
-0.3235
-</td>
-<td style="text-align:right;">
-0.3749
-</td>
-<td style="text-align:right;">
-1316
-</td>
-<td style="text-align:right;">
-16569
-</td>
-<td style="text-align:right;">
-0.0794
-</td>
-<td style="text-align:right;">
--1
-</td>
-<td style="text-align:right;">
-0.3267
-</td>
-<td style="text-align:left;">
-FALSE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:right;">
-0.3159
-</td>
-<td style="text-align:right;">
-0
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-Spanish
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-TRUE
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:right;">
-0.3207
-</td>
-<td style="text-align:right;">
-0.2953
-</td>
-<td style="text-align:right;">
-0.3472
-</td>
-<td style="text-align:right;">
-1241
-</td>
-<td style="text-align:right;">
-16468
-</td>
-<td style="text-align:right;">
-0.0754
-</td>
-<td style="text-align:right;">
--1
-</td>
-<td style="text-align:right;">
-0.0131
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-FALSE
-</td>
-<td style="text-align:right;">
-0.0168
-</td>
-<td style="text-align:right;">
--1
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-English
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-TRUE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-NA
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.6755
 </td>
-<td style="text-align:right;">
-0.6505
-</td>
-<td style="text-align:right;">
-0.6995
-</td>
-<td style="text-align:right;">
-1399
-</td>
-<td style="text-align:right;">
-16963
-</td>
-<td style="text-align:right;">
-0.0825
-</td>
-<td style="text-align:right;">
-0
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.0000
 </td>
-<td style="text-align:left;">
-TRUE
+<td style="text-align:left;background-color: lightgray !important;">
+REF
 </td>
-<td style="text-align:left;">
-TRUE
+<td style="text-align:right;background-color: darkgray !important;">
+16963
 </td>
-<td style="text-align:right;">
-1.0000
+<td style="text-align:right;background-color: darkgray !important;">
+1399
 </td>
-<td style="text-align:right;">
-0
+<td style="text-align:right;background-color: darkgray !important;">
+0.0825
 </td>
 </tr>
 <tr>
 <td style="text-align:left;">
 Other
 </td>
-<td style="text-align:left;background-color: lightgray !important;">
-TRUE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-TRUE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-NA
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-BIAS
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.6482
 </td>
-<td style="text-align:right;">
-0.6220
+<td style="text-align:right;background-color: lightgray !important;">
+0.0273
 </td>
-<td style="text-align:right;">
-0.6735
+<td style="text-align:left;background-color: lightgray !important;">
+NO BIAS
 </td>
-<td style="text-align:right;">
-1316
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: darkgray !important;">
 16569
 </td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: darkgray !important;">
+1316
+</td>
+<td style="text-align:right;background-color: darkgray !important;">
 0.0794
-</td>
-<td style="text-align:right;">
-1
-</td>
-<td style="text-align:right;">
-0.3144
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:right;">
-0.3159
-</td>
-<td style="text-align:right;">
-0
 </td>
 </tr>
 <tr>
 <td style="text-align:left;">
 Spanish
 </td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-TRUE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.6761
 </td>
-<td style="text-align:right;">
-0.6495
-</td>
-<td style="text-align:right;">
-0.7015
-</td>
-<td style="text-align:right;">
-1241
-</td>
-<td style="text-align:right;">
-16468
-</td>
-<td style="text-align:right;">
-0.0754
-</td>
-<td style="text-align:right;">
-1
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.0006
 </td>
-<td style="text-align:left;">
-TRUE
+<td style="text-align:left;background-color: lightgray !important;">
+NO BIAS
 </td>
-<td style="text-align:left;">
-TRUE
+<td style="text-align:right;background-color: darkgray !important;">
+16468
 </td>
-<td style="text-align:right;">
-0.0168
+<td style="text-align:right;background-color: darkgray !important;">
+1241
 </td>
-<td style="text-align:right;">
--1
+<td style="text-align:right;background-color: darkgray !important;">
+0.0754
 </td>
 </tr>
 </tbody>
 </table>
 
 ``` r
-CIs %>% filter(!is.na(language)) %>% 
-  bias_check('fnr_ci', 'language', 'English', fairness_metric='FNR') %>% 
+CIs %>% filter(!is.na(language), threshold == 0.15) %>% # If you defined multiple thresholds in Step 1, list the one you want to use for analysis here.
+  bias_check('fnr_ci', 'language', 'English', fairness_metric='FNR') %>% # If you are using different sensitive variables than we are, change the second value to your first variable of interest; change the third value to its reference group. 
   mutate(label = paste0(as.character(round(prev*100, 1)), '%')) %>%
   ggplot(aes(x=group, y = mean, ymin = lower, ymax = upper, color = group)) + 
   geom_linerange() + geom_point() + 
   theme(axis.line=element_blank(), axis.text.x=element_blank()) + 
-  ggtitle("BIA FNR by primary language, thresholds adjusted") +
+  ggtitle("Adj FNRs for language") +
   geom_text(aes(x=group, y=0, label=label), show.legend=FALSE)
 ```
 
-![](Threshold-Adjustment-Playbook_files/figure-gfm/fnr_combo2-3.png)<!-- -->
+![](Threshold-Adjustment-Playbook_files/figure-gfm/adj_EOD-3.png)<!-- -->
 
 ``` r
-FNR_insurance = CIs %>% filter(!is.na(insurance)) %>% 
-  bias_check('fnr_ci', 'insurance', 'Medicaid', fairness_metric='FNR') %>% select('group','difference_check','outside_ci','directionality','five_pp_diff','ci_check','composite_check', 'mean','lower','upper','pos','total','prev','delta_sign','eod','lower_outside','upper_outside','p_value','prev_delta_sign') 
-knitr::kable(FNR_insurance, caption = "BIA FNR metrics by financial class, thresholds adjusted", digits=4) %>%
+adj_EOD_insurance = CIs %>% filter(!is.na(insurance), threshold == 0.15) %>% # If you defined multiple thresholds in Step 1, list the one you want to use for analysis here.
+  bias_check('fnr_ci', 'insurance', 'Medicaid', fairness_metric='FNR') %>% # If you are using different sensitive variables than we are, change the second value to your first variable of interest; change the third value to its reference group. 
+  mutate(
+    five_pp_diff = if_else(group == 'Medicaid', "REF", five_pp_diff) # Replace the value of 'group' with your reference group
+  ) %>%  
+  select('group','mean','eod','five_pp_diff','total','pos','prev') 
+knitr::kable(EOD_insurance, caption = "Adjusted Equal Opportunity Differences, Insurance", digits=4) %>%
   kableExtra::kable_styling() %>%
   kableExtra::column_spec(2:4, background = "lightgray") %>%
   kableExtra::column_spec(5:7, background = "darkgray")
@@ -4443,66 +2244,30 @@ knitr::kable(FNR_insurance, caption = "BIA FNR metrics by financial class, thres
 
 <table class="table" style="margin-left: auto; margin-right: auto;">
 <caption>
-BIA FNR metrics by financial class, thresholds adjusted
+Adjusted Equal Opportunity Differences, Insurance
 </caption>
 <thead>
 <tr>
 <th style="text-align:left;">
 group
 </th>
-<th style="text-align:left;">
-difference_check
-</th>
-<th style="text-align:left;">
-outside_ci
-</th>
-<th style="text-align:left;">
-directionality
-</th>
-<th style="text-align:left;">
-five_pp_diff
-</th>
-<th style="text-align:left;">
-ci_check
-</th>
-<th style="text-align:left;">
-composite_check
-</th>
 <th style="text-align:right;">
 mean
-</th>
-<th style="text-align:right;">
-lower
-</th>
-<th style="text-align:right;">
-upper
-</th>
-<th style="text-align:right;">
-pos
-</th>
-<th style="text-align:right;">
-total
-</th>
-<th style="text-align:right;">
-prev
-</th>
-<th style="text-align:right;">
-delta_sign
 </th>
 <th style="text-align:right;">
 eod
 </th>
 <th style="text-align:left;">
-lower_outside
-</th>
-<th style="text-align:left;">
-upper_outside
+five_pp_diff
 </th>
 <th style="text-align:right;">
-p_value
+total
 </th>
 <th style="text-align:right;">
-prev_delta_sign
+pos
+</th>
+<th style="text-align:right;">
+prev
 </th>
 </tr>
 </thead>
@@ -4511,880 +2276,220 @@ prev_delta_sign
 <td style="text-align:left;">
 Commercial
 </td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-NA
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:right;">
-0.3358
-</td>
-<td style="text-align:right;">
-0.2975
-</td>
-<td style="text-align:right;">
-0.3763
-</td>
-<td style="text-align:right;">
-548
-</td>
-<td style="text-align:right;">
-7208
-</td>
-<td style="text-align:right;">
-0.0760
-</td>
-<td style="text-align:right;">
--1
-</td>
-<td style="text-align:right;">
-0.0124
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-FALSE
-</td>
-<td style="text-align:right;">
-0.9155
-</td>
-<td style="text-align:right;">
-0
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-Medicaid
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-TRUE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-NA
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:right;">
-0.3481
-</td>
-<td style="text-align:right;">
-0.3092
-</td>
-<td style="text-align:right;">
-0.3893
-</td>
-<td style="text-align:right;">
-540
-</td>
-<td style="text-align:right;">
-7160
-</td>
-<td style="text-align:right;">
-0.0754
-</td>
-<td style="text-align:right;">
--1
-</td>
-<td style="text-align:right;">
-0.3407
-</td>
-<td style="text-align:left;">
-FALSE
-</td>
-<td style="text-align:left;">
-FALSE
-</td>
-<td style="text-align:right;">
-1.0000
-</td>
-<td style="text-align:right;">
-0
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-Medicare
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-NA
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:right;">
-0.3339
-</td>
-<td style="text-align:right;">
-0.2957
-</td>
-<td style="text-align:right;">
-0.3745
-</td>
-<td style="text-align:right;">
-548
-</td>
-<td style="text-align:right;">
-7104
-</td>
-<td style="text-align:right;">
-0.0771
-</td>
-<td style="text-align:right;">
--1
-</td>
-<td style="text-align:right;">
-0.0142
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-FALSE
-</td>
-<td style="text-align:right;">
-0.7222
-</td>
-<td style="text-align:right;">
-0
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-No Fault
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-TRUE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-NA
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:right;">
-0.3569
-</td>
-<td style="text-align:right;">
-0.3190
-</td>
-<td style="text-align:right;">
-0.3967
-</td>
-<td style="text-align:right;">
-580
-</td>
-<td style="text-align:right;">
-7082
-</td>
-<td style="text-align:right;">
-0.0819
-</td>
-<td style="text-align:right;">
--1
-</td>
-<td style="text-align:right;">
-0.3320
-</td>
-<td style="text-align:left;">
-FALSE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:right;">
-0.1600
-</td>
-<td style="text-align:right;">
-0
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-Other Government
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-NA
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:right;">
-0.3518
-</td>
-<td style="text-align:right;">
-0.3139
-</td>
-<td style="text-align:right;">
-0.3917
-</td>
-<td style="text-align:right;">
-577
-</td>
-<td style="text-align:right;">
-6976
-</td>
-<td style="text-align:right;">
-0.0827
-</td>
-<td style="text-align:right;">
-1
-</td>
-<td style="text-align:right;">
-0.0037
-</td>
-<td style="text-align:left;">
-FALSE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:right;">
-0.1151
-</td>
-<td style="text-align:right;">
-0
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-Self-Pay
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-TRUE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-NA
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:right;">
-0.3004
-</td>
-<td style="text-align:right;">
-0.2640
-</td>
-<td style="text-align:right;">
-0.3394
-</td>
-<td style="text-align:right;">
-566
-</td>
-<td style="text-align:right;">
-7263
-</td>
-<td style="text-align:right;">
-0.0779
-</td>
-<td style="text-align:right;">
--1
-</td>
-<td style="text-align:right;">
-0.3885
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-FALSE
-</td>
-<td style="text-align:right;">
-0.5925
-</td>
-<td style="text-align:right;">
-0
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-Workers Comp
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-NA
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:right;">
-0.3166
-</td>
-<td style="text-align:right;">
-0.2805
-</td>
-<td style="text-align:right;">
-0.3550
-</td>
-<td style="text-align:right;">
-597
-</td>
-<td style="text-align:right;">
-7207
-</td>
-<td style="text-align:right;">
-0.0828
-</td>
-<td style="text-align:right;">
--1
-</td>
-<td style="text-align:right;">
-0.0316
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-FALSE
-</td>
-<td style="text-align:right;">
-0.1062
-</td>
-<td style="text-align:right;">
-0
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-Commercial
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-TRUE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-NA
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.6679
 </td>
-<td style="text-align:right;">
-0.6274
-</td>
-<td style="text-align:right;">
-0.7060
-</td>
-<td style="text-align:right;">
-548
-</td>
-<td style="text-align:right;">
-7208
-</td>
-<td style="text-align:right;">
-0.0760
-</td>
-<td style="text-align:right;">
--1
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.0210
 </td>
-<td style="text-align:left;">
-TRUE
+<td style="text-align:left;background-color: lightgray !important;">
+NO BIAS
 </td>
-<td style="text-align:left;">
-TRUE
+<td style="text-align:right;background-color: darkgray !important;">
+7208
 </td>
-<td style="text-align:right;">
-0.9155
+<td style="text-align:right;background-color: darkgray !important;">
+548
 </td>
-<td style="text-align:right;">
-0
+<td style="text-align:right;background-color: darkgray !important;">
+0.0760
 </td>
 </tr>
 <tr>
 <td style="text-align:left;">
 Medicaid
 </td>
-<td style="text-align:left;background-color: lightgray !important;">
-TRUE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-TRUE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-NA
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-BIAS
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.6889
 </td>
-<td style="text-align:right;">
-0.6486
+<td style="text-align:right;background-color: lightgray !important;">
+0.0000
 </td>
-<td style="text-align:right;">
-0.7265
+<td style="text-align:left;background-color: lightgray !important;">
+REF
 </td>
-<td style="text-align:right;">
-540
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: darkgray !important;">
 7160
 </td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: darkgray !important;">
+540
+</td>
+<td style="text-align:right;background-color: darkgray !important;">
 0.0754
-</td>
-<td style="text-align:right;">
-1
-</td>
-<td style="text-align:right;">
-0.3407
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:right;">
-1.0000
-</td>
-<td style="text-align:right;">
-0
 </td>
 </tr>
 <tr>
 <td style="text-align:left;">
 Medicare
 </td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-TRUE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-NA
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.6606
 </td>
-<td style="text-align:right;">
-0.6199
-</td>
-<td style="text-align:right;">
-0.6990
-</td>
-<td style="text-align:right;">
-548
-</td>
-<td style="text-align:right;">
-7104
-</td>
-<td style="text-align:right;">
-0.0771
-</td>
-<td style="text-align:right;">
--1
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.0283
 </td>
-<td style="text-align:left;">
-TRUE
+<td style="text-align:left;background-color: lightgray !important;">
+NO BIAS
 </td>
-<td style="text-align:left;">
-TRUE
+<td style="text-align:right;background-color: darkgray !important;">
+7104
 </td>
-<td style="text-align:right;">
-0.7222
+<td style="text-align:right;background-color: darkgray !important;">
+548
 </td>
-<td style="text-align:right;">
-0
+<td style="text-align:right;background-color: darkgray !important;">
+0.0771
 </td>
 </tr>
 <tr>
 <td style="text-align:left;">
 No Fault
 </td>
-<td style="text-align:left;background-color: lightgray !important;">
-TRUE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-TRUE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-NA
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-BIAS
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.6603
 </td>
-<td style="text-align:right;">
-0.6208
+<td style="text-align:right;background-color: lightgray !important;">
+0.0285
 </td>
-<td style="text-align:right;">
-0.6977
+<td style="text-align:left;background-color: lightgray !important;">
+NO BIAS
 </td>
-<td style="text-align:right;">
-580
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: darkgray !important;">
 7082
 </td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: darkgray !important;">
+580
+</td>
+<td style="text-align:right;background-color: darkgray !important;">
 0.0819
-</td>
-<td style="text-align:right;">
-1
-</td>
-<td style="text-align:right;">
-0.3122
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:right;">
-0.1600
-</td>
-<td style="text-align:right;">
-0
 </td>
 </tr>
 <tr>
 <td style="text-align:left;">
 Other Government
 </td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-TRUE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-NA
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.6828
 </td>
-<td style="text-align:right;">
-0.6437
-</td>
-<td style="text-align:right;">
-0.7195
-</td>
-<td style="text-align:right;">
-577
-</td>
-<td style="text-align:right;">
-6976
-</td>
-<td style="text-align:right;">
-0.0827
-</td>
-<td style="text-align:right;">
--1
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.0060
 </td>
-<td style="text-align:left;">
-TRUE
+<td style="text-align:left;background-color: lightgray !important;">
+NO BIAS
 </td>
-<td style="text-align:left;">
-TRUE
+<td style="text-align:right;background-color: darkgray !important;">
+6976
 </td>
-<td style="text-align:right;">
-0.1151
+<td style="text-align:right;background-color: darkgray !important;">
+577
 </td>
-<td style="text-align:right;">
-0
+<td style="text-align:right;background-color: darkgray !important;">
+0.0827
 </td>
 </tr>
 <tr>
 <td style="text-align:left;">
 Self-Pay
 </td>
-<td style="text-align:left;background-color: lightgray !important;">
-TRUE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-TRUE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-NA
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-BIAS
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.6484
 </td>
-<td style="text-align:right;">
-0.6082
+<td style="text-align:right;background-color: lightgray !important;">
+0.0405
 </td>
-<td style="text-align:right;">
-0.6866
+<td style="text-align:left;background-color: lightgray !important;">
+NO BIAS
 </td>
-<td style="text-align:right;">
-566
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: darkgray !important;">
 7263
 </td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: darkgray !important;">
+566
+</td>
+<td style="text-align:right;background-color: darkgray !important;">
 0.0779
-</td>
-<td style="text-align:right;">
-1
-</td>
-<td style="text-align:right;">
-0.3003
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:right;">
-0.5925
-</td>
-<td style="text-align:right;">
-0
 </td>
 </tr>
 <tr>
 <td style="text-align:left;">
 Workers Comp
 </td>
-<td style="text-align:left;background-color: lightgray !important;">
-FALSE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-TRUE
-</td>
-<td style="text-align:left;background-color: lightgray !important;">
-NA
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:left;background-color: darkgray !important;">
-NO BIAS
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.6583
 </td>
-<td style="text-align:right;">
-0.6193
-</td>
-<td style="text-align:right;">
-0.6952
-</td>
-<td style="text-align:right;">
-597
-</td>
-<td style="text-align:right;">
-7207
-</td>
-<td style="text-align:right;">
-0.0828
-</td>
-<td style="text-align:right;">
--1
-</td>
-<td style="text-align:right;">
+<td style="text-align:right;background-color: lightgray !important;">
 0.0306
 </td>
-<td style="text-align:left;">
-TRUE
+<td style="text-align:left;background-color: lightgray !important;">
+NO BIAS
 </td>
-<td style="text-align:left;">
-TRUE
+<td style="text-align:right;background-color: darkgray !important;">
+7207
 </td>
-<td style="text-align:right;">
-0.1062
+<td style="text-align:right;background-color: darkgray !important;">
+597
 </td>
-<td style="text-align:right;">
-0
+<td style="text-align:right;background-color: darkgray !important;">
+0.0828
 </td>
 </tr>
 </tbody>
 </table>
 
 ``` r
-CIs %>% filter(!is.na(insurance)) %>% 
-  bias_check('fnr_ci', 'insurance', 'Medicaid', fairness_metric='FNR') %>% 
+CIs %>% filter(!is.na(insurance), threshold == 0.15) %>% # If you defined multiple thresholds in Step 1, list the one you want to use for analysis here.
+  bias_check('fnr_ci', 'insurance', 'Medicaid', fairness_metric='FNR') %>% # If you are using different sensitive variables than we are, change the second value to your first variable of interest; change the third value to its reference group. 
   mutate(label = paste0(as.character(round(prev*100, 1)), '%')) %>%
   ggplot(aes(x=group, y = mean, ymin = lower, ymax = upper, color = group)) + 
   geom_linerange() + geom_point() + 
   theme(axis.line=element_blank(), axis.text.x=element_blank()) + 
-  ggtitle("BIA FNR by financial class, thresholds adjusted") +
+  ggtitle("Adj FNRs for insurance") +
   geom_text(aes(x=group, y=0, label=label), show.legend=FALSE)
 ```
 
-![](Threshold-Adjustment-Playbook_files/figure-gfm/fnr_combo2-4.png)<!-- -->
+![](Threshold-Adjustment-Playbook_files/figure-gfm/adj_EOD-4.png)<!-- -->
+
+## Assess Impact of Threshold Adjustment on Fairness Across Classes
+
+Comparing original and updated Disparity Tables shows how threshold
+adjustment impacted fairness for other classes. Every organization
+should define success contextually. To catalyze those conversations, we
+offer one possible set of guidelines in Step 4.3 of the Playbook.
 
 ``` r
-adjusted_bias_output = tibble(
-  class = c("race", "sex", "language", "insurance"),
+adj_disparity_table = tibble(
+  class = c("race", "sex", "language", "insurance"), # Edit according to your classes
   big = c(
-    (max(abs(FNR_race$eod))), 
-    (max(abs(FNR_sex$eod))), 
-    (max(abs(FNR_language$eod))), 
-    (max(abs(FNR_insurance$eod)))
+    (max(abs(EOD_race$eod))), # Edit according to your classes
+    (max(abs(EOD_sex$eod))), # Edit according to your classes
+    (max(abs(EOD_language$eod))), # Edit according to your classes
+    (max(abs(EOD_insurance$eod))) # Edit according to your classes
     ),
   avg = c(
-    (sum(FNR_race$eod)/7), #AUTOMATE
-    (sum(FNR_sex$eod)/1), #AUTOMATE
-    (sum(FNR_language$eod)/2), #AUTOMATE
-    (sum(FNR_insurance$eod)/6) #AUTOMATE
-  ),
+    sum(EOD_race$eod) / (n_distinct(EOD_race$group) - 1),  # Edit according to your classes
+    sum(EOD_sex$eod) / (n_distinct(EOD_sex$group) - 1),      # Edit according to your classes
+    sum(EOD_language$eod) / (n_distinct(EOD_language$group) - 1),  # Edit according to your classes
+    sum(EOD_insurance$eod) / (n_distinct(EOD_insurance$group) - 1)), # Edit according to your classes
   avg_pop_adj = 
     c(
-    (FNR_race %>% filter(group != 'Hispanic') %>% summarize(weighted_sum = sum(eod * total), total_sum = sum(total)) %>% mutate(final_result = weighted_sum / total_sum) %>% pull(final_result)), 
-    (FNR_sex %>% filter(group != 'Female') %>% summarize(weighted_sum = sum(eod * total), total_sum = sum(total)) %>% mutate(final_result = weighted_sum / total_sum) %>% pull(final_result)),
-    (FNR_language %>% filter(group != 'English') %>% summarize(weighted_sum = sum(eod * total), total_sum = sum(total)) %>% mutate(final_result = weighted_sum / total_sum) %>% pull(final_result)),
-    (FNR_insurance %>% filter(group != 'Medicaid') %>% summarize(weighted_sum = sum(eod * total), total_sum = sum(total)) %>% mutate(final_result = weighted_sum / total_sum) %>% pull(final_result))
+    (EOD_race %>% filter(group != 'Hispanic') %>% summarize(weighted_sum = sum(eod * total), total_sum = sum(total)) %>% mutate(final_result = weighted_sum / total_sum) %>% pull(final_result)), # Replace the value of group != to your reference group for this class
+    (EOD_sex %>% filter(group != 'Female') %>% summarize(weighted_sum = sum(eod * total), total_sum = sum(total)) %>% mutate(final_result = weighted_sum / total_sum) %>% pull(final_result)), # Replace the value of group != to your reference group for this class
+    (EOD_language %>% filter(group != 'English') %>% summarize(weighted_sum = sum(eod * total), total_sum = sum(total)) %>% mutate(final_result = weighted_sum / total_sum) %>% pull(final_result)), # Replace the value of group != to your reference group for this class
+    (EOD_insurance %>% filter(group != 'Medicaid') %>% summarize(weighted_sum = sum(eod * total), total_sum = sum(total)) %>% mutate(final_result = weighted_sum / total_sum) %>% pull(final_result)) # Replace the value of group != to your reference group for this class
     ),
   five_pp = c(
-    (nrow(FNR_race %>% filter(five_pp_diff == "BIAS")))/(nrow(FNR_race %>% filter(eod > 0)))*100,
-    (nrow(FNR_sex %>% filter(five_pp_diff == "BIAS")))/(nrow(FNR_sex%>% filter(eod > 0)))*100,
-    (nrow(FNR_language %>% filter(five_pp_diff == "BIAS")))/(nrow(FNR_language%>% filter(eod > 0)))*100,
-    (nrow(FNR_insurance %>% filter(five_pp_diff == "BIAS")))/(nrow(FNR_insurance%>% filter(eod > 0)))*100
+    (nrow(EOD_race %>% filter(five_pp_diff == "BIAS")))/(nrow(EOD_race %>% filter(eod > 0)))*100, # Edit according to your classes
+    (nrow(EOD_sex %>% filter(five_pp_diff == "BIAS")))/(nrow(EOD_sex%>% filter(eod > 0)))*100, # Edit according to your classes
+    (nrow(EOD_language %>% filter(five_pp_diff == "BIAS")))/(nrow(EOD_language%>% filter(eod > 0)))*100, # Edit according to your classes
+    (nrow(EOD_insurance %>% filter(five_pp_diff == "BIAS")))/(nrow(EOD_insurance%>% filter(eod > 0)))*100 # Edit according to your classes
     ) 
 )
 
-
-adjusted_bias_output = adjusted_bias_output %>% 
+adj_disparity_table = adj_disparity_table %>% 
   mutate(across(where(is.numeric),~ round(.,3))) %>%
   mutate(across(where(is.numeric), ~ ifelse(. == max(.), paste0("<span style='color: red;'>", ., "</span>"), .)))
 
-knitr::kable(bias_output, caption = "Measures of Disparity using Equal Opportunity (FNR), post-adjustment", col.names = c(
+knitr::kable(adj_disparity_table, caption = "Adjusted Equal Opportunity Disparity Table", col.names = c(
  "Class",
  "Biggest Abs EOD",
  "Abs Avg EOD",
@@ -5400,121 +2505,16 @@ knitr::kable(bias_output, caption = "Measures of Disparity using Equal Opportuni
 | language  | 0.027                                  | 0.014                                  | 0.014                                  | <span style="color: red;">0</span> |
 | insurance | 0.04                                   | <span style="color: red;">0.026</span> | <span style="color: red;">0.026</span> | <span style="color: red;">0</span> |
 
-Measures of Disparity using Equal Opportunity (FNR), post-adjustment
+Adjusted Equal Opportunity Disparity Table
 
-# To close, let’s also check accuracy at baseline and after mitigation
+To interpret success of mitigation using this table, refer to Section
+4.3 of the Playbook.
 
-``` r
-# Function to calculate accuracy score
-accuracy_score <- function(label_value, old_label, normalize = TRUE, sample_weight = NULL) {
-  # Check if label_value and old_label are the same length
-  if (length(label_value) != length(old_label)) {
-    stop("label_value and old_label must have the same length")
-  }
-  # Calculate the score
-  if (is.matrix(label_value) || is.matrix(old_label)) {
-    differing_labels <- rowSums(label_value != old_label)
-    score <- as.numeric(differing_labels == 0)
-  } else {
-    score <- label_value == old_label
-  }
-  # Calculate the final accuracy score
-  if (!is.null(sample_weight)) {
-    score <- score * sample_weight
-    total_weight <- sum(sample_weight)
-    return(if (normalize) sum(score) / total_weight else sum(score))
-  } else {
-    return(if (normalize) mean(score) else sum(score))
-  }
-}
-# Function to calculate balanced accuracy score
-balanced_accuracy_score <- function(label_value, old_label, sample_weight = NULL, adjusted = FALSE) {
-  # Check if label_value and old_label are the same length
-  if (length(label_value) != length(old_label)) {
-    stop("label_value and old_label must have the same length")
-  }
-  # Create a confusion matrix
-  cm <- table(label_value, old_label)
-  # Calculate recall for each class
-  recalls <- diag(cm) / rowSums(cm)
-  # Calculate balanced accuracy
-  balanced_acc <- mean(recalls, na.rm = TRUE)  # Ignore NA values
-  if (adjusted) {
-    # Adjusted balanced accuracy
-    random_acc <- sum(rowSums(cm) * colSums(cm)) / sum(cm)^2
-    return(balanced_acc - random_acc)
-  } else {
-    return(balanced_acc)
-  }
-}
-# Use it to get baseline accuracy scores
-baseline_accuracy = accuracy_score(BIA$label_value, BIA$old_label)
-baseline_balanced_accuracy = balanced_accuracy_score(BIA$label_value, BIA$old_label)
-print(paste("Baseline Accuracy Score:", baseline_accuracy))
-```
+To implement your new subgroup thresholds in your EMR, refer to Section
+5 of the Playbook.
+\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
 
-    ## [1] "Baseline Accuracy Score: 0.64536"
-
-``` r
-print(paste("Baseline Balanced Accuracy Score:", baseline_balanced_accuracy))
-```
-
-    ## [1] "Baseline Balanced Accuracy Score: 0.502789502176623"
-
-``` r
-# Function to calculate accuracy score
-accuracy_score <- function(label_value, new_label, normalize = TRUE, sample_weight = NULL) {
-  # Check if label_value and new_label are the same length
-  if (length(label_value) != length(new_label)) {
-    stop("label_value and new_label must have the same length")
-  }
-  # Calculate the score
-  if (is.matrix(label_value) || is.matrix(new_label)) {
-    differing_labels <- rowSums(label_value != new_label)
-    score <- as.numeric(differing_labels == 0)
-  } else {
-    score <- label_value == new_label
-  }
-  # Calculate the final accuracy score
-  if (!is.null(sample_weight)) {
-    score <- score * sample_weight
-    total_weight <- sum(sample_weight)
-    return(if (normalize) sum(score) / total_weight else sum(score))
-  } else {
-    return(if (normalize) mean(score) else sum(score))
-  }
-}
-# Function to calculate balanced accuracy score
-balanced_accuracy_score <- function(label_value, new_label, sample_weight = NULL, adjusted = FALSE) {
-  # Check if label_value and new_label are the same length
-  if (length(label_value) != length(new_label)) {
-    stop("label_value and new_label must have the same length")
-  }
-  # Create a confusion matrix
-  cm <- table(label_value, new_label)
-  # Calculate recall for each class
-  recalls <- diag(cm) / rowSums(cm)
-  # Calculate balanced accuracy
-  balanced_acc <- mean(recalls, na.rm = TRUE)  # Ignore NA values
-  if (adjusted) {
-    # Adjusted balanced accuracy
-    random_acc <- sum(rowSums(cm) * colSums(cm)) / sum(cm)^2
-    return(balanced_acc - random_acc)
-  } else {
-    return(balanced_acc)
-  }
-}
-# Use it to get baseline accuracy scores
-adjusted_accuracy = accuracy_score(BIA$label_value, BIA$new_label)
-adjusted_balanced_accuracy = balanced_accuracy_score(BIA$label_value, BIA$new_label)
-
-print(paste("Adjusted Accuracy Score:", adjusted_accuracy))
-```
-
-    ## [1] "Adjusted Accuracy Score: 0.63012"
-
-``` r
-print(paste("Adjusted Balanced Accuracy Score:", adjusted_balanced_accuracy))
-```
-
-    ## [1] "Adjusted Balanced Accuracy Score: 0.500637957502996"
+*Suggested Citation:* Mackin S, Major VJ, Chunara R, Dickenson A, Lee S,
+Bocour A, Eisenstein L, Davis N, Newton-Dame R. Mitigating bias in AI
+algorithms: A healthcare guide to threshold adjustment. New York City:
+Office of Population Health, NYC Health + Hospitals; 2024.
