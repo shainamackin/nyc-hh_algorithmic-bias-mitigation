@@ -13,8 +13,8 @@ for mitigating algorithmic bias in healthcare by illustrating a simple
 method of subgroup threshold adjustment that can improve the fairness of
 both commercial and in-house algorithms in the EMR.
 
-Note that **\# in-line comments** are provided within code chunks where
-you need to edit parameters specific to your data/use-case.
+**\# in-line comments** are provided within code chunks where you need
+to edit parameters specific to your data/use-case.
 
 This resource is the fruit of collaboration across NYC Health +
 Hospitals and New York University’s Center for Health Data Science and

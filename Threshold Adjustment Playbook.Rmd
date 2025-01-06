@@ -18,7 +18,7 @@ knitr::include_graphics("/Posit/DataCore/AlgorithmicBiasProject/nyc-hh_algorithm
 
 The annotated code presented here is meant to accompany our detailed playbook which aims to address the gap in accessible, practical tools for mitigating algorithmic bias in healthcare by illustrating a simple method of subgroup threshold adjustment that can improve the fairness of both commercial and in-house algorithms in the EMR.
 
-Note that **# in-line comments** are provided within code chunks where you need to edit parameters specific to your data/use-case.
+**# in-line comments** are provided within code chunks where you need to edit parameters specific to your data/use-case.
 
 This resource is the fruit of collaboration across NYC Health + Hospitals and New York University’s Center for Health Data Science and Grossman School of Medicine’s Department of Population Health, with funding from Schmidt Futures and Rockefeller Philanthropy Advisors.
 
