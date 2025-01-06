@@ -11,7 +11,7 @@ knitr::opts_chunk$set(warning=FALSE, message=FALSE)
 ```
 
 ```{r logo, echo=FALSE, out.width='50%'}
-knitr::include_graphics("NYCHH_logo_CMYK.png")
+knitr::include_graphics("/Posit/DataCore/AlgorithmicBiasProject/nyc-hh_algorithmic-bias-mitigation/images/NYCHH_logo_CMYK.png")
 ```
 
 # Introduction
@@ -27,7 +27,7 @@ ________________________________________________________________________________
 # Step 1: Prepare
 
 ```{r step1, echo=FALSE, out.width='100%'}
-knitr::include_graphics("step1.png")
+knitr::include_graphics("/Posit/DataCore/AlgorithmicBiasProject/nyc-hh_algorithmic-bias-mitigation/images/step1.png")
 ```
    
 ```{r setup}
@@ -127,7 +127,7 @@ ________________________________________________________________________________
 
 # Step 2: Assess Bias
 ```{r step2, echo=FALSE, out.width='100%'}
-knitr::include_graphics("step2.png")
+knitr::include_graphics("/Posit/DataCore/AlgorithmicBiasProject/nyc-hh_algorithmic-bias-mitigation/images/step2.png")
 ```
 
 ## Probability Distributions
@@ -385,12 +385,12 @@ Create a dataframe of performance metrics and their confidence intervals (CIs) u
 # You don't need to edit anything in this chunk unless your variable names differ.
 CIs = lapply(sensitive, function(s){
     lapply(thresholds, function(t){
-      loc_ci = BIA %>% mutate(new_label = as.integer(proba >= t) ) %>% group_by_(s) %>% 
+      loc_ci = BIA %>% mutate(prediction = as.integer(proba >= t) ) %>% group_by_(s) %>% 
         summarize(threshold = t, total = n(), 
                   pos = sum(label_value), neg = total - pos, # actual positive and actual negative
-                  pp = sum(new_label), pn = total - pp, # predicted P and N where total = P+N
-                  tp = sum((new_label + label_value) == 2), fp = pp - tp, # Predicted P = True + False P
-                  tn = sum((new_label + label_value) == 0), fn = pn - tn,
+                  pp = sum(prediction), pn = total - pp, # predicted P and N where total = P+N
+                  tp = sum((prediction + label_value) == 2), fp = pp - tp, # Predicted P = True + False P
+                  tn = sum((prediction + label_value) == 0), fn = pn - tn,
                   neg_check = fp + tn, pos_check = tp + fn
         ) %>% 
         mutate(prev_percent = (round((pos/total) * 100, digits=4)), 
@@ -600,7 +600,7 @@ _____________________________________________________________________________
 # Step 3: Mitigate Bias
 
 ```{r step3, echo=FALSE, out.width='100%'}
-knitr::include_graphics("step3.png")
+knitr::include_graphics("/Posit/DataCore/AlgorithmicBiasProject/nyc-hh_algorithmic-bias-mitigation/images/step3.png")
 ```
 
 ## Identify Group-Specific Thresholds That Improve Equal Opportunity
@@ -713,7 +713,7 @@ _____________________________________________________________________________
 # Step 4: Assess Mitigation Success
 
 ```{r step4, echo=FALSE, out.width='100%'}
-knitr::include_graphics("step4.png")
+knitr::include_graphics("/Posit/DataCore/AlgorithmicBiasProject/nyc-hh_algorithmic-bias-mitigation/images/step4.png")
 ```
 
 ## Assess Model Accuracy and Alert Rate with Updated Thresholds

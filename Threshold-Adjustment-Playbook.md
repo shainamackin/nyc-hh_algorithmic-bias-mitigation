@@ -1,9 +1,9 @@
 Mitigating Bias in AI Algorithms: A Healthcare Guide to Threshold
 Adjustment
 ================
-2025-01-03
+2025-01-06
 
-<img src="NYCHH_logo_CMYK.png" width="50%" />
+<img src="images/NYCHH_logo_CMYK.png" width="50%" />
 
 # Introduction
 
@@ -31,7 +31,7 @@ high-quality care.
 
 # Step 1: Prepare
 
-<img src="step1.png" width="100%" />
+<img src="images/step1.png" width="100%" />
 
 ``` r
 # Setup your environment by loading the following libraries. 
@@ -214,7 +214,7 @@ thresholds = c(0.08, 0.15) #you only need one threshold, but if you are consider
 
 # Step 2: Assess Bias
 
-<img src="step2.png" width="100%" />
+<img src="images/step2.png" width="100%" />
 
 ## Probability Distributions
 
@@ -577,12 +577,12 @@ Create a dataframe of performance metrics and their confidence intervals
 # You don't need to edit anything in this chunk unless your variable names differ.
 CIs = lapply(sensitive, function(s){
     lapply(thresholds, function(t){
-      loc_ci = BIA %>% mutate(new_label = as.integer(proba >= t) ) %>% group_by_(s) %>% 
+      loc_ci = BIA %>% mutate(prediction = as.integer(proba >= t) ) %>% group_by_(s) %>% 
         summarize(threshold = t, total = n(), 
                   pos = sum(label_value), neg = total - pos, # actual positive and actual negative
-                  pp = sum(new_label), pn = total - pp, # predicted P and N where total = P+N
-                  tp = sum((new_label + label_value) == 2), fp = pp - tp, # Predicted P = True + False P
-                  tn = sum((new_label + label_value) == 0), fn = pn - tn,
+                  pp = sum(prediction), pn = total - pp, # predicted P and N where total = P+N
+                  tp = sum((prediction + label_value) == 2), fp = pp - tp, # Predicted P = True + False P
+                  tn = sum((prediction + label_value) == 0), fn = pn - tn,
                   neg_check = fp + tn, pos_check = tp + fn
         ) %>% 
         mutate(prev_percent = (round((pos/total) * 100, digits=4)), 
@@ -1432,7 +1432,7 @@ be prioritized for mitigation in Step 3.
 
 # Step 3: Mitigate Bias
 
-<img src="step3.png" width="100%" />
+<img src="images/step3.png" width="100%" />
 
 ## Identify Group-Specific Thresholds That Improve Equal Opportunity
 
@@ -1581,7 +1581,7 @@ flips
 
 # Step 4: Assess Mitigation Success
 
-<img src="step4.png" width="100%" />
+<img src="images/step4.png" width="100%" />
 
 ## Assess Model Accuracy and Alert Rate with Updated Thresholds
 
