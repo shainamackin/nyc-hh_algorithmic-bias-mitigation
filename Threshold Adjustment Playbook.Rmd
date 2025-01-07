@@ -67,7 +67,7 @@ There are two ways to pull your dataset.
 
 (2) Connect to a csv flat file. We're calling our dataset 'BIA' for Bias In Algorithms. You can call yours whatever you like, but if you do change it, be sure to replace all other occurrences of 'BIA' in the code with your new name.
 ```{r csv}
-BIA <- read_csv("Synthetic Data for Bias Mitigation.xlsb.csv") # Replace with your file name
+BIA <- read_csv("BIA_Synth_Data_trends_updated2.csv") # Replace with your file name
 ```
 ## Clean Your Data
 Your data needs to contain the following columns:  
