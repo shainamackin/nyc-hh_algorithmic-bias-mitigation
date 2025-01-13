@@ -1,7 +1,7 @@
 Mitigating Bias in AI Algorithms: A Healthcare Guide to Threshold
 Adjustment
 ================
-2025-01-06
+2025-01-13
 
 <img src="images/NYCHH_logo_CMYK.png" width="25%" />
 
@@ -74,7 +74,7 @@ There are two ways to pull your dataset.
     code with your new name.
 
 ``` r
-BIA <- read_csv("Synthetic Data for Bias Mitigation.xlsb.csv") # Replace with your file name
+BIA <- read_csv("BIA_Synthetic_Data.csv") # Replace with your file name
 ```
 
 ## Clean Your Data
@@ -90,12 +90,11 @@ predict and ‘0’ is the absence of that outcome)
 If you need to rename any variables, do so now.
 
 ``` r
-# Clean your data so that your probability variable is 'proba' and your outcome variable is 'label_value'
+# Clean your data so that your probability variable is 'proba' 
 # Rename any of your sensitive variables how you'd like. For us, that's updating our insurance and age names: 
 BIA = janitor::clean_names(BIA) %>% # We're making all variable names lowercase,
   rename(proba = score, # Renaming our score variable as 'proba',
          insurance = financial_class, # Renaming our financial_class variable as 'insurance',
-         label_value = outcome, # Renaming our outcome variable as 'label_value', and
          age = age_category) # Renaming our age_category variable as 'age'
 ```
 
@@ -103,7 +102,7 @@ Check to make sure your outcome variable is binary. If it’s not, combine
 outcome categories so that it is.
 
 ``` r
-categories <- unique(BIA$label_value) 
+categories <- unique(BIA$outcome) 
 knitr::kable(categories, col.names = "Outcomes")
 ```
 
@@ -142,53 +141,53 @@ Subgroup counts
 
 | race              |    n | fraction |
 |:------------------|-----:|---------:|
-| Native American   | 6118 |  0.12236 |
-| Something Else    | 6198 |  0.12396 |
-| Asian             | 6199 |  0.12398 |
-| Hispanic          | 6241 |  0.12482 |
-| Unknown           | 6253 |  0.12506 |
-| Two or more races | 6272 |  0.12544 |
-| White             | 6284 |  0.12568 |
-| African American  | 6435 |  0.12870 |
+| Something Else    | 2826 |  0.05652 |
+| Asian             | 5619 |  0.11238 |
+| Native American   | 5631 |  0.11262 |
+| Unknown           | 5688 |  0.11376 |
+| Two or more races | 5781 |  0.11562 |
+| African American  | 5963 |  0.11926 |
+| White             | 8739 |  0.17478 |
+| Hispanic          | 9753 |  0.19506 |
 
 </td>
 <td>
 
 | sex    |     n | fraction |
 |:-------|------:|---------:|
-| Female | 24922 |  0.49844 |
-| Male   | 25078 |  0.50156 |
+| Male   | 24003 |  0.48006 |
+| Female | 25997 |  0.51994 |
 
 </td>
 <td>
 
 | age   |     n | fraction |
 |:------|------:|---------:|
-| \>45  | 16623 |  0.33246 |
-| 25-45 | 16666 |  0.33332 |
-| \<25  | 16711 |  0.33422 |
+| \>45  | 16530 |  0.33060 |
+| 25-45 | 16718 |  0.33436 |
+| \<25  | 16752 |  0.33504 |
 
 </td>
 <td>
 
 | language |     n | fraction |
 |:---------|------:|---------:|
-| Spanish  | 16468 |  0.32936 |
-| Other    | 16569 |  0.33138 |
-| English  | 16963 |  0.33926 |
+| Other    |  6886 |  0.13772 |
+| Spanish  | 19273 |  0.38546 |
+| English  | 23841 |  0.47682 |
 
 </td>
 <td>
 
-| insurance        |    n | fraction |
-|:-----------------|-----:|---------:|
-| Other Government | 6976 |  0.13952 |
-| No Fault         | 7082 |  0.14164 |
-| Medicare         | 7104 |  0.14208 |
-| Medicaid         | 7160 |  0.14320 |
-| Workers Comp     | 7207 |  0.14414 |
-| Commercial       | 7208 |  0.14416 |
-| Self-Pay         | 7263 |  0.14526 |
+| insurance        |     n | fraction |
+|:-----------------|------:|---------:|
+| No Fault         |  6454 |  0.12908 |
+| Medicare         |  6524 |  0.13048 |
+| Self-Pay         |  6538 |  0.13076 |
+| Other Government |  6588 |  0.13176 |
+| Medicaid         |  6619 |  0.13238 |
+| Workers Comp     |  6659 |  0.13318 |
+| Commercial       | 10618 |  0.21236 |
 
 </td>
 </tr>
@@ -231,7 +230,7 @@ visual sense of how different thresholds flag different subgroups.
 
 ``` r
 lapply(sensitive, function(s){
-  BIA %>% ggplot(aes(x = proba, color = .data[[!!s]])) + 
+ p = BIA %>% ggplot(aes(x = proba, color = .data[[!!s]])) + 
     geom_vline(xintercept = thresholds) + 
     geom_density(bounds = c(0, 1), linewidth = 2) +
     ggtitle(paste("Probability distribution for",s))
@@ -354,7 +353,7 @@ analytic.form_ntiles = function(df, group_var = NA, groups = 10, z = 1.96, perce
     mutate(chunk = ntile(proba, n = groups), center = (chunk * (100/groups) - ((100/groups)/2)) ) %>% 
     filter(center >= first(percentile_range)*100, chunk <= last(percentile_range)*100) %>% 
     group_by(group, center) %>% 
-    summarize(label_mean = mean(label_value),
+    summarize(label_mean = mean(outcome),
               model_prediction_mean = mean(proba),
               n = n()) %>% ungroup() %>% 
     mutate(se = sqrt((label_mean*(1-label_mean))/n),
@@ -370,18 +369,18 @@ Curve for our data.
 ``` r
 # Again, you don't need to edit the parameters in this chunk as long as you've maintained our nomenclature, just run it.
 # Area under
-total.roc = analytic.calc_roc(BIA$proba, BIA$label_value)
+total.roc = analytic.calc_roc(BIA$proba, BIA$outcome)
 writeLines(glue::glue('Area under the ROC curve is: {round(100*first(total.roc$auroc), 2)}%'))
 ```
 
-    ## Area under the ROC curve is: 50.79%
+    ## Area under the ROC curve is: 86.14%
 
 ``` r
-total.prc = analytic.calc_prc(BIA$proba, BIA$label_value)
+total.prc = analytic.calc_prc(BIA$proba, BIA$outcome)
 writeLines(glue::glue('Area under the Precision-Recall curve for is: {round(100*first(total.prc$auprc), 2)}%'))
 ```
 
-    ## Area under the Precision-Recall curve for is: 8.13%
+    ## Area under the Precision-Recall curve for is: 44.7%
 
 ``` r
 # ROC
@@ -453,11 +452,11 @@ performances = lapply(sensitive, function(s){
     }
     # For each value within the sensitive variable, e.g. for male within sex, calculate ROC and PRC
     temp.roc = mapply(function(temp.df, value){
-      analytic.calc_roc(temp.df$proba, temp.df$label_value, group_name = value ) %>% 
+      analytic.calc_roc(temp.df$proba, temp.df$outcome, group_name = value ) %>% 
         mutate(n_group = nrow(temp.df)) # subgroup sample size for clarity
     }, df.list, s.values ) %>% t() %>% as.tibble()
     temp.prc = mapply(function(temp.df, value){
-      analytic.calc_prc(temp.df$proba, temp.df$label_value, group_name = value)
+      analytic.calc_prc(temp.df$proba, temp.df$outcome, group_name = value)
     }, df.list, s.values ) %>% t() %>% as.tibble()
     # Combine globals into one output of AUROCs and PR-AUCs
     global = left_join(temp.roc %>% select(group, n_group, auroc) %>% tidyr::unnest(cols = c(group, n_group, auroc)), temp.prc %>% select(group, auprc) %>% tidyr::unnest(cols = c(group, auprc)), by = join_by(group)) %>% mutate(group = glue::glue('{s}={group}'))
@@ -545,29 +544,29 @@ knitr::kable(global_performances)
 
 | group                      | n_group |     auroc |     auprc |
 |:---------------------------|--------:|----------:|----------:|
-| race=African American      |    6435 | 0.5049994 | 0.0866900 |
-| race=Asian                 |    6199 | 0.5127251 | 0.0858149 |
-| race=Hispanic              |    6241 | 0.5262047 | 0.0828071 |
-| race=Native American       |    6118 | 0.5056685 | 0.0862835 |
-| race=Something Else        |    6198 | 0.5168311 | 0.0853229 |
-| race=Two or more races     |    6272 | 0.4774217 | 0.0799771 |
-| race=Unknown               |    6253 | 0.5214838 | 0.0820199 |
-| race=White                 |    6284 | 0.4994842 | 0.0805740 |
-| sex=Female                 |   24922 | 0.5090485 | 0.0839665 |
-| sex=Male                   |   25078 | 0.5067609 | 0.0792212 |
-| age=25-45                  |   16666 | 0.5095931 | 0.0841742 |
-| age=\<25                   |   16711 | 0.5080443 | 0.0819541 |
-| age=\>45                   |   16623 | 0.5061438 | 0.0801843 |
-| language=English           |   16963 | 0.5038689 | 0.0846722 |
-| language=Other             |   16569 | 0.5069614 | 0.0830072 |
-| language=Spanish           |   16468 | 0.5135490 | 0.0787984 |
-| insurance=Commercial       |    7208 | 0.5068758 | 0.0777737 |
-| insurance=Medicaid         |    7160 | 0.5001590 | 0.0776156 |
-| insurance=Medicare         |    7104 | 0.5133159 | 0.0813699 |
-| insurance=No Fault         |    7082 | 0.4947024 | 0.0831798 |
-| insurance=Other Government |    6976 | 0.4965449 | 0.0856945 |
-| insurance=Self-Pay         |    7263 | 0.5233214 | 0.0833936 |
-| insurance=Workers Comp     |    7207 | 0.5201778 | 0.0909183 |
+| race=African American      |    5963 | 0.7683917 | 0.4266475 |
+| race=Asian                 |    5619 | 0.9401181 | 0.5486946 |
+| race=Hispanic              |    9753 | 0.8290706 | 0.4097390 |
+| race=Native American       |    5631 | 0.9178439 | 0.4846723 |
+| race=Something Else        |    2826 | 0.8505488 | 0.3920923 |
+| race=Two or more races     |    5781 | 0.9227523 | 0.4387840 |
+| race=Unknown               |    5688 | 0.9259316 | 0.4638295 |
+| race=White                 |    8739 | 0.9308959 | 0.5440543 |
+| sex=Female                 |   25997 | 0.8576664 | 0.4612216 |
+| sex=Male                   |   24003 | 0.8635712 | 0.4334274 |
+| age=25-45                  |   16718 | 0.8615517 | 0.4521086 |
+| age=\<25                   |   16752 | 0.8719933 | 0.4709538 |
+| age=\>45                   |   16530 | 0.8494339 | 0.4195285 |
+| language=English           |   23841 | 0.8648657 | 0.4672416 |
+| language=Other             |    6886 | 0.8644197 | 0.4380724 |
+| language=Spanish           |   19273 | 0.8547416 | 0.4234835 |
+| insurance=Commercial       |   10618 | 0.8633560 | 0.4471157 |
+| insurance=Medicaid         |    6619 | 0.8030681 | 0.3897112 |
+| insurance=Medicare         |    6524 | 0.9063984 | 0.4815773 |
+| insurance=No Fault         |    6454 | 0.7857614 | 0.4086432 |
+| insurance=Other Government |    6588 | 0.9317875 | 0.5100215 |
+| insurance=Self-Pay         |    6538 | 0.8781859 | 0.4648471 |
+| insurance=Workers Comp     |    6659 | 0.9003593 | 0.4868387 |
 
 ## Assess Fairness Metrics by Class
 
@@ -587,10 +586,10 @@ CIs = lapply(sensitive, function(s){
     lapply(thresholds, function(t){
       loc_ci = BIA %>% mutate(prediction = as.integer(proba >= t) ) %>% group_by_(s) %>% 
         summarize(threshold = t, total = n(), 
-                  pos = sum(label_value), neg = total - pos, # actual positive and actual negative
+                  pos = sum(outcome), neg = total - pos, # actual positive and actual negative
                   pp = sum(prediction), pn = total - pp, # predicted P and N where total = P+N
-                  tp = sum((prediction + label_value) == 2), fp = pp - tp, # Predicted P = True + False P
-                  tn = sum((prediction + label_value) == 0), fn = pn - tn,
+                  tp = sum((prediction + outcome) == 2), fp = pp - tp, # Predicted P = True + False P
+                  tn = sum((prediction + outcome) == 0), fn = pn - tn,
                   neg_check = fp + tn, pos_check = tp + fn
         ) %>% 
         mutate(prev_percent = (round((pos/total) * 100, digits=4)), 
@@ -713,22 +712,22 @@ prev
 African American
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.6754
+0.5261
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.0180
+0.2564
 </td>
 <td style="text-align:left;background-color: lightgray !important;">
-NO BIAS
+BIAS
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-6435
+5963
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-536
+937
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-0.0833
+0.1571
 </td>
 </tr>
 <tr>
@@ -736,22 +735,22 @@ NO BIAS
 Asian
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.6409
+0.0719
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.0165
+0.1979
 </td>
 <td style="text-align:left;background-color: lightgray !important;">
-NO BIAS
+BIAS
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-6199
+5619
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-504
+473
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-0.0813
+0.0842
 </td>
 </tr>
 <tr>
@@ -759,7 +758,7 @@ NO BIAS
 Hispanic
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.6574
+0.2697
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
 0.0000
@@ -768,13 +767,13 @@ Hispanic
 REF
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-6241
+9753
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-467
+975
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-0.0748
+0.1000
 </td>
 </tr>
 <tr>
@@ -782,22 +781,22 @@ REF
 Native American
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.6772
+0.1217
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.0198
+0.1480
 </td>
 <td style="text-align:left;background-color: lightgray !important;">
-NO BIAS
+BIAS
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-6118
+5631
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-508
+460
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-0.0830
+0.0817
 </td>
 </tr>
 <tr>
@@ -805,22 +804,22 @@ NO BIAS
 Something Else
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.6660
+0.2876
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.0086
+0.0179
 </td>
 <td style="text-align:left;background-color: lightgray !important;">
 NO BIAS
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-6198
+2826
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-482
+226
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-0.0778
+0.0800
 </td>
 </tr>
 <tr>
@@ -828,22 +827,22 @@ NO BIAS
 Two or more races
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.7014
+0.1259
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.0440
+0.1438
 </td>
 <td style="text-align:left;background-color: lightgray !important;">
-NO BIAS
+BIAS
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-6272
+5781
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-499
+413
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-0.0796
+0.0714
 </td>
 </tr>
 <tr>
@@ -851,22 +850,22 @@ NO BIAS
 Unknown
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.6377
+0.1247
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.0197
+0.1451
 </td>
 <td style="text-align:left;background-color: lightgray !important;">
-NO BIAS
+BIAS
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-6253
+5688
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-472
+393
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-0.0755
+0.0691
 </td>
 </tr>
 <tr>
@@ -874,22 +873,22 @@ NO BIAS
 White
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.6742
+0.1640
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.0168
+0.1057
 </td>
 <td style="text-align:left;background-color: lightgray !important;">
-NO BIAS
+BIAS
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-6284
+8739
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-488
+817
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-0.0777
+0.0935
 </td>
 </tr>
 </tbody>
@@ -956,7 +955,7 @@ prev
 Female
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.6624
+0.2346
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
 0.0000
@@ -965,13 +964,13 @@ Female
 REF
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-24922
+25997
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-2020
+2647
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-0.0811
+0.1018
 </td>
 </tr>
 <tr>
@@ -979,22 +978,22 @@ REF
 Male
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.6710
+0.2565
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.0086
+0.0219
 </td>
 <td style="text-align:left;background-color: lightgray !important;">
 NO BIAS
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-25078
+24003
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-1936
+2047
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-0.0772
+0.0853
 </td>
 </tr>
 </tbody>
@@ -1061,7 +1060,7 @@ prev
 English
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.6755
+0.2415
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
 0.0000
@@ -1070,13 +1069,13 @@ English
 REF
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-16963
+23841
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-1399
+2381
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-0.0825
+0.0999
 </td>
 </tr>
 <tr>
@@ -1084,22 +1083,22 @@ REF
 Other
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.6482
+0.2264
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.0273
+0.0151
 </td>
 <td style="text-align:left;background-color: lightgray !important;">
 NO BIAS
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-16569
+6886
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-1316
+614
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-0.0794
+0.0892
 </td>
 </tr>
 <tr>
@@ -1107,22 +1106,22 @@ NO BIAS
 Spanish
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.6761
+0.2543
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.0006
+0.0128
 </td>
 <td style="text-align:left;background-color: lightgray !important;">
 NO BIAS
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-16468
+19273
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-1241
+1699
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-0.0754
+0.0882
 </td>
 </tr>
 </tbody>
@@ -1189,22 +1188,22 @@ prev
 Commercial
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.6679
+0.1969
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.0210
+0.1606
 </td>
 <td style="text-align:left;background-color: lightgray !important;">
-NO BIAS
+BIAS
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-7208
+10618
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-548
+838
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-0.0760
+0.0789
 </td>
 </tr>
 <tr>
@@ -1212,7 +1211,7 @@ NO BIAS
 Medicaid
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.6889
+0.3575
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
 0.0000
@@ -1221,13 +1220,13 @@ Medicaid
 REF
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-7160
+6619
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-540
+716
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-0.0754
+0.1082
 </td>
 </tr>
 <tr>
@@ -1235,22 +1234,22 @@ REF
 Medicare
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.6606
+0.1694
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.0283
+0.1881
 </td>
 <td style="text-align:left;background-color: lightgray !important;">
-NO BIAS
+BIAS
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-7104
+6524
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-548
+549
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-0.0771
+0.0842
 </td>
 </tr>
 <tr>
@@ -1258,22 +1257,22 @@ NO BIAS
 No Fault
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.6603
+0.3653
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.0285
+0.0078
 </td>
 <td style="text-align:left;background-color: lightgray !important;">
 NO BIAS
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-7082
+6454
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-580
+761
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-0.0819
+0.1179
 </td>
 </tr>
 <tr>
@@ -1281,22 +1280,22 @@ NO BIAS
 Other Government
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.6828
+0.1026
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.0060
+0.2549
 </td>
 <td style="text-align:left;background-color: lightgray !important;">
-NO BIAS
+BIAS
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-6976
+6588
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-577
+575
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-0.0827
+0.0873
 </td>
 </tr>
 <tr>
@@ -1304,22 +1303,22 @@ NO BIAS
 Self-Pay
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.6484
+0.3077
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.0405
+0.0498
 </td>
 <td style="text-align:left;background-color: lightgray !important;">
 NO BIAS
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-7263
+6538
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-566
+676
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-0.0779
+0.1034
 </td>
 </tr>
 <tr>
@@ -1327,22 +1326,22 @@ NO BIAS
 Workers Comp
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.6583
+0.1503
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.0306
+0.2073
 </td>
 <td style="text-align:left;background-color: lightgray !important;">
-NO BIAS
+BIAS
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-7207
+6659
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-597
+579
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-0.0828
+0.0869
 </td>
 </tr>
 </tbody>
@@ -1429,12 +1428,12 @@ knitr::kable(disparity_table, caption = "Equal Opportunity Disparity Table", col
 )) 
 ```
 
-| Class     | Biggest Abs EOD                        | Abs Avg EOD                            | Weighted Abs Avg EOD                   | Subgroups with \>0.05 Abs EOD (%)  |
-|:----------|:---------------------------------------|:---------------------------------------|:---------------------------------------|:-----------------------------------|
-| race      | <span style="color: red;">0.044</span> | 0.02                                   | 0.02                                   | <span style="color: red;">0</span> |
-| sex       | 0.009                                  | 0.009                                  | 0.009                                  | <span style="color: red;">0</span> |
-| language  | 0.027                                  | 0.014                                  | 0.014                                  | <span style="color: red;">0</span> |
-| insurance | 0.04                                   | <span style="color: red;">0.026</span> | <span style="color: red;">0.026</span> | <span style="color: red;">0</span> |
+| Class     | Biggest Abs EOD                        | Abs Avg EOD                            | Weighted Abs Avg EOD                   | Subgroups with \>0.05 Abs EOD (%)       |
+|:----------|:---------------------------------------|:---------------------------------------|:---------------------------------------|:----------------------------------------|
+| race      | <span style="color: red;">0.256</span> | <span style="color: red;">0.145</span> | <span style="color: red;">0.152</span> | <span style="color: red;">85.714</span> |
+| sex       | 0.022                                  | 0.022                                  | 0.022                                  | 0                                       |
+| language  | 0.015                                  | 0.014                                  | 0.013                                  | 0                                       |
+| insurance | 0.255                                  | <span style="color: red;">0.145</span> | 0.147                                  | 66.667                                  |
 
 Equal Opportunity Disparity Table
 
@@ -1476,7 +1475,7 @@ find_optimal_threshold <- function(data, reference_fnr, protected_class_value, p
   thresholds <- seq(0, 1, by = 0.01)
   fnr_diffs <- sapply(thresholds, function(threshold) {
     fnr <- calculate_fnr(data$proba[data[[protected_class_col]] == protected_class_value],
-                         data$label_value[data[[protected_class_col]] == protected_class_value],
+                         data$outcome[data[[protected_class_col]] == protected_class_value],
                          threshold)
     
     diff <- if (whichScore == 'closest') {
@@ -1511,7 +1510,7 @@ reference_threshold <- .15
 # Set the reference group to calculate its FNR
 reference_class <- 'Hispanic'
 
-reference_fnr <- calculate_fnr(predictive_model_data$proba[predictive_model_data[[protected_class_col]] == reference_class],predictive_model_data$label_value[predictive_model_data[[protected_class_col]] == reference_class],reference_threshold)  
+reference_fnr <- calculate_fnr(predictive_model_data$proba[predictive_model_data[[protected_class_col]] == reference_class],predictive_model_data$outcome[predictive_model_data[[protected_class_col]] == reference_class],reference_threshold)  
 
 # Find optimal thresholds for each protected class value
 protected_classes <- unique(predictive_model_data[[protected_class_col]])
@@ -1524,14 +1523,14 @@ knitr::kable(optimal_thresholds, caption = "Subgroup Thresholds")
 
 |                   |    x |
 |:------------------|-----:|
-| Native American   | 0.15 |
-| Two or more races | 0.14 |
+| African American  | 0.04 |
+| Asian             | 0.35 |
 | Hispanic          | 0.15 |
-| Asian             | 0.15 |
-| African American  | 0.14 |
-| Something Else    | 0.15 |
-| White             | 0.14 |
-| Unknown           | 0.15 |
+| Native American   | 0.27 |
+| Something Else    | 0.13 |
+| Two or more races | 0.28 |
+| Unknown           | 0.28 |
+| White             | 0.35 |
 
 Subgroup Thresholds
 
@@ -1585,15 +1584,15 @@ knitr::kable(flips)
 
 | race              | count_changes | one_to_zero | zero_to_one |
 |:------------------|--------------:|------------:|------------:|
-| African American  |           266 |           0 |         266 |
-| Asian             |             0 |           0 |           0 |
+| African American  |          1169 |           0 |        1169 |
+| Asian             |           222 |         222 |           0 |
 | Hispanic          |             0 |           0 |           0 |
-| Native American   |             0 |           0 |           0 |
-| Something Else    |             0 |           0 |           0 |
-| Two or more races |           304 |           0 |         304 |
-| Unknown           |             0 |           0 |           0 |
-| White             |           298 |           0 |         298 |
-| Total             |           868 |           0 |         868 |
+| Native American   |           301 |         301 |           0 |
+| Something Else    |            97 |           0 |          97 |
+| Two or more races |           302 |         302 |           0 |
+| Unknown           |           283 |         283 |           0 |
+| White             |           502 |         502 |           0 |
+| Total             |          2876 |        1610 |        1266 |
 
 ------------------------------------------------------------------------
 
@@ -1617,16 +1616,16 @@ First, we’ll calculate accuracy.
 #  Again, you don't need to edit the parameters in this chunk as long as you've maintained our nomenclature, just run it.
 
 # Function to calculate baseline accuracy score
-accuracy_score <- function(label_value, old_label, normalize = TRUE, sample_weight = NULL) {
-  # Check if label_value and old_label are the same length
-  if (length(label_value) != length(old_label)) {
-    stop("label_value and old_label must have the same length")
+accuracy_score <- function(outcome, old_label, normalize = TRUE, sample_weight = NULL) {
+  # Check if outcome and old_label are the same length
+  if (length(outcome) != length(old_label)) {
+    stop("outcome and old_label must have the same length")
   }
-  if (is.matrix(label_value) || is.matrix(old_label)) {
-    differing_labels <- rowSums(label_value != old_label)
+  if (is.matrix(outcome) || is.matrix(old_label)) {
+    differing_labels <- rowSums(outcome != old_label)
     score <- as.numeric(differing_labels == 0)
   } else {
-    score <- label_value == old_label
+    score <- outcome == old_label
   }
   if (!is.null(sample_weight)) {
     score <- score * sample_weight
@@ -1638,16 +1637,16 @@ accuracy_score <- function(label_value, old_label, normalize = TRUE, sample_weig
 }
 
 # Function to calculate adjusted accuracy score
-accuracy_score <- function(label_value, new_label, normalize = TRUE, sample_weight = NULL) {
-  # Check if label_value and new_label are the same length
-  if (length(label_value) != length(new_label)) {
-    stop("label_value and new_label must have the same length")
+accuracy_score <- function(outcome, new_label, normalize = TRUE, sample_weight = NULL) {
+  # Check if outcome and new_label are the same length
+  if (length(outcome) != length(new_label)) {
+    stop("outcome and new_label must have the same length")
   }
-  if (is.matrix(label_value) || is.matrix(new_label)) {
-    differing_labels <- rowSums(label_value != new_label)
+  if (is.matrix(outcome) || is.matrix(new_label)) {
+    differing_labels <- rowSums(outcome != new_label)
     score <- as.numeric(differing_labels == 0)
   } else {
-    score <- label_value == new_label
+    score <- outcome == new_label
   }
   if (!is.null(sample_weight)) {
     score <- score * sample_weight
@@ -1659,20 +1658,20 @@ accuracy_score <- function(label_value, new_label, normalize = TRUE, sample_weig
 }
 
 # Use the functions to get accuracy scores
-baseline_accuracy = accuracy_score(BIA$label_value, BIA$old_label)
-adjusted_accuracy = accuracy_score(BIA$label_value, BIA$new_label)
+baseline_accuracy = accuracy_score(BIA$outcome, BIA$old_label)
+adjusted_accuracy = accuracy_score(BIA$outcome, BIA$new_label)
 
 # Print the accuracy scores
 print(paste("Baseline Accuracy Score:", baseline_accuracy))
 ```
 
-    ## [1] "Baseline Accuracy Score: 0.64536"
+    ## [1] "Baseline Accuracy Score: 0.87758"
 
 ``` r
 print(paste("Adjusted Accuracy Score:", adjusted_accuracy))
 ```
 
-    ## [1] "Adjusted Accuracy Score: 0.63012"
+    ## [1] "Adjusted Accuracy Score: 0.8791"
 
 Second, we’ll put our accuracy scores in a table and also calculate
 alert rate changes. You don’t need to edit the following code chunk if
@@ -1733,10 +1732,10 @@ Alert Rate
 Baseline
 </td>
 <td style="text-align:right;">
-0.65
+0.88
 </td>
 <td style="text-align:right;">
-0.33
+0.17
 </td>
 </tr>
 <tr>
@@ -1744,10 +1743,10 @@ Baseline
 Adjusted
 </td>
 <td style="text-align:right;">
-0.63
+0.88
 </td>
 <td style="text-align:right;">
-0.35
+0.16
 </td>
 </tr>
 <tr>
@@ -1755,10 +1754,10 @@ Adjusted
 Percent Change
 </td>
 <td style="text-align:right;">
--2.36
+0.17
 </td>
 <td style="text-align:right;">
-5.29
+-4.04
 </td>
 </tr>
 </tbody>
@@ -1775,16 +1774,40 @@ class that we identified. We re-generate the equal opportunity
 difference table we ran in Step 2 with our updated prediction labels.
 
 ``` r
-# Pay attention to the in-line comments in this chunk, as edits are required for your data/use-case: 
+# Again, you don't need to edit the parameters in this chunk as long as you've maintained our nomenclature, just run it.
+adjusted_CIs = lapply(sensitive, function(s){
+      loc_ci = BIA %>% 
+      group_by_(s) %>% 
+      summarize(
+                  total = n(), 
+                  pos = sum(outcome), neg = total - pos, # actual positive and actual negative
+                  pp = sum(new_label), pn = total - pp, # predicted P and N where total = P+N
+                  tp = sum((new_label + outcome) == 2), fp = pp - tp, # Predicted P = True + False P
+                  tn = sum((new_label + outcome) == 0), fn = pn - tn,
+                  neg_check = fp + tn, pos_check = tp + fn
+        ) %>% 
+        mutate(prev_percent = (round((pos/total) * 100, digits=4)), 
+               alert_rate = pp/total, 
+               ppv_precision = tp/pp, ppv_ci = binom.confint(tp, pp, method = 'ac')[4:6], 
+               npv = tn/pn, 
+               tpr_recall_sensitivity = tp/(pos), tpr_ci = binom.confint(tp, pos, method = 'ac')[4:6],
+               tnr_specificity = tn/(neg), 
+               fpr_type1 = fp/(neg),
+               fnr_type2 = fn/(pos), fnr_ci = binom.confint(fn, pos, method = 'ac')[4:6] 
+  )
+    }) %>% bind_rows()
+```
 
-adj_EOD_race = CIs %>% filter(!is.na(race), threshold == 0.15) %>% # If you defined multiple thresholds in Step 1, list the one you want to use for analysis here.
+``` r
+# Pay attention to the in-line comments in this chunk, as edits are required for your data/use-case: 
+adj_EOD_race = adjusted_CIs %>% filter(!is.na(race)) %>%
   bias_check('fnr_ci', 'race', 'Hispanic', fairness_metric='FNR') %>% # If you are using different sensitive variables than we are, change the second value to your first variable of interest; change the third value to its reference group. 
   mutate(
     five_pp_diff = if_else(group == 'Hispanic', "REF", five_pp_diff) # Replace the value of 'group' with your reference group
   ) %>%  
   select('group','mean','eod','five_pp_diff','total','pos','prev') %>%
   rename('fnr' = mean) 
-knitr::kable(EOD_race, caption = "Adjusted Equal Opportunity Differences, Race", digits=4) %>%
+knitr::kable(adj_EOD_race, caption = "Adjusted Equal Opportunity Differences, Race", digits=4) %>%
   kableExtra::kable_styling() %>%
   kableExtra::column_spec(2:4, background = "lightgray") %>%
   kableExtra::column_spec(5:7, background = "darkgray")
@@ -1825,22 +1848,22 @@ prev
 African American
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.6754
+0.2882
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.0180
+0.0184
 </td>
 <td style="text-align:left;background-color: lightgray !important;">
 NO BIAS
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-6435
+5963
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-536
+937
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-0.0833
+0.1571
 </td>
 </tr>
 <tr>
@@ -1848,22 +1871,22 @@ NO BIAS
 Asian
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.6409
+0.2600
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.0165
+0.0097
 </td>
 <td style="text-align:left;background-color: lightgray !important;">
 NO BIAS
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-6199
+5619
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-504
+473
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-0.0813
+0.0842
 </td>
 </tr>
 <tr>
@@ -1871,7 +1894,7 @@ NO BIAS
 Hispanic
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.6574
+0.2697
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
 0.0000
@@ -1880,13 +1903,13 @@ Hispanic
 REF
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-6241
+9753
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-467
+975
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-0.0748
+0.1000
 </td>
 </tr>
 <tr>
@@ -1894,22 +1917,22 @@ REF
 Native American
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.6772
+0.2652
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.0198
+0.0045
 </td>
 <td style="text-align:left;background-color: lightgray !important;">
 NO BIAS
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-6118
+5631
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-508
+460
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-0.0830
+0.0817
 </td>
 </tr>
 <tr>
@@ -1917,22 +1940,22 @@ NO BIAS
 Something Else
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.6660
+0.2788
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.0086
+0.0090
 </td>
 <td style="text-align:left;background-color: lightgray !important;">
 NO BIAS
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-6198
+2826
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-482
+226
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-0.0778
+0.0800
 </td>
 </tr>
 <tr>
@@ -1940,22 +1963,22 @@ NO BIAS
 Two or more races
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.7014
+0.2663
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.0440
+0.0034
 </td>
 <td style="text-align:left;background-color: lightgray !important;">
 NO BIAS
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-6272
+5781
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-499
+413
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-0.0796
+0.0714
 </td>
 </tr>
 <tr>
@@ -1963,22 +1986,22 @@ NO BIAS
 Unknown
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.6377
+0.2646
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.0197
+0.0051
 </td>
 <td style="text-align:left;background-color: lightgray !important;">
 NO BIAS
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-6253
+5688
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-472
+393
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-0.0755
+0.0691
 </td>
 </tr>
 <tr>
@@ -1986,29 +2009,29 @@ NO BIAS
 White
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.6742
+0.2754
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.0168
+0.0057
 </td>
 <td style="text-align:left;background-color: lightgray !important;">
 NO BIAS
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-6284
+8739
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-488
+817
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-0.0777
+0.0935
 </td>
 </tr>
 </tbody>
 </table>
 
 ``` r
-CIs %>% filter(!is.na(race), threshold == 0.15) %>% # If you defined multiple thresholds in Step 1, list the one you want to use for analysis here.
+adjusted_CIs %>% filter(!is.na(race)) %>% 
   bias_check('fnr_ci', 'race', 'Hispanic', fairness_metric='FNR') %>% # If you are using different sensitive variables than we are, change the second value to your first variable of interest; change the third value to its reference group. 
   mutate(label = paste0(as.character(round(prev*100, 1)), '%')) %>%
   ggplot(aes(x=group, y = mean, ymin = lower, ymax = upper, color = group)) + 
@@ -2021,13 +2044,13 @@ CIs %>% filter(!is.na(race), threshold == 0.15) %>% # If you defined multiple th
 ![](Threshold-Adjustment-Playbook_files/figure-gfm/adj_EOD-1.png)<!-- -->
 
 ``` r
-adj_EOD_sex = CIs %>% filter(!is.na(sex), threshold == 0.15) %>% # If you defined multiple thresholds in Step 1, list the one you want to use for analysis here.
+adj_EOD_sex = adjusted_CIs %>% filter(!is.na(sex)) %>% 
   bias_check('fnr_ci', 'sex', 'Female', fairness_metric='FNR') %>% # If you are using different sensitive variables than we are, change the second value to your first variable of interest; change the third value to its reference group. 
     mutate(
     five_pp_diff = if_else(group == 'Female', "REF", five_pp_diff)) %>%  # Replace the value of 'group' with your reference group
     select('group','mean','eod','five_pp_diff','total','pos','prev') %>%
     rename('fnr' = mean) 
-knitr::kable(EOD_sex, caption = "Adjusted Equal Opportunity Differences, Sex", digits=4) %>%
+knitr::kable(adj_EOD_sex, caption = "Adjusted Equal Opportunity Differences, Sex", digits=4) %>%
   kableExtra::kable_styling() %>%
   kableExtra::column_spec(2:4, background = "lightgray") %>%
   kableExtra::column_spec(5:7, background = "darkgray")
@@ -2068,7 +2091,7 @@ prev
 Female
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.6624
+0.2032
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
 0.0000
@@ -2077,13 +2100,13 @@ Female
 REF
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-24922
+25997
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-2020
+2647
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-0.0811
+0.1018
 </td>
 </tr>
 <tr>
@@ -2091,29 +2114,29 @@ REF
 Male
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.6710
+0.3625
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.0086
+0.1592
 </td>
 <td style="text-align:left;background-color: lightgray !important;">
-NO BIAS
+BIAS
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-25078
+24003
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-1936
+2047
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-0.0772
+0.0853
 </td>
 </tr>
 </tbody>
 </table>
 
 ``` r
-CIs %>% filter(!is.na(sex), threshold == 0.15) %>% # If you defined multiple thresholds in Step 1, list the one you want to use for analysis here.
+adjusted_CIs %>% filter(!is.na(sex)) %>% 
   bias_check('fnr_ci', 'sex', 'Female', fairness_metric='FNR') %>% # If you are using different sensitive variables than we are, change the second value to your first variable of interest; change the third value to its reference group. 
   mutate(label = paste0(as.character(round(prev*100, 1)), '%')) %>%
   ggplot(aes(x=group, y = mean, ymin = lower, ymax = upper, color = group)) + 
@@ -2126,13 +2149,13 @@ CIs %>% filter(!is.na(sex), threshold == 0.15) %>% # If you defined multiple thr
 ![](Threshold-Adjustment-Playbook_files/figure-gfm/adj_EOD-2.png)<!-- -->
 
 ``` r
-adj_EOD_language = CIs %>% filter(!is.na(language), threshold == 0.15) %>% # If you defined multiple thresholds in Step 1, list the one you want to use for analysis here.
+adj_EOD_language = adjusted_CIs %>% filter(!is.na(language)) %>% 
   bias_check('fnr_ci', 'language', 'English', fairness_metric='FNR') %>% # If you are using different sensitive variables than we are, change the second value to your first variable of interest; change the third value to its reference group. 
   mutate(
     five_pp_diff = if_else(group == 'English', "REF", five_pp_diff) # Replace the value of 'group' with your reference group
   ) %>%  
   select('group','mean','eod','five_pp_diff','total','pos','prev') 
-knitr::kable(EOD_language, caption = "Adjusted Equal Opportunity Differences, Language", digits=4) %>%
+knitr::kable(adj_EOD_language, caption = "Adjusted Equal Opportunity Differences, Language", digits=4) %>%
   kableExtra::kable_styling() %>%
   kableExtra::column_spec(2:4, background = "lightgray") %>%
   kableExtra::column_spec(5:7, background = "darkgray")
@@ -2173,7 +2196,7 @@ prev
 English
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.6755
+0.2549
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
 0.0000
@@ -2182,13 +2205,13 @@ English
 REF
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-16963
+23841
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-1399
+2381
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-0.0825
+0.0999
 </td>
 </tr>
 <tr>
@@ -2196,22 +2219,22 @@ REF
 Other
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.6482
+0.2752
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.0273
+0.0203
 </td>
 <td style="text-align:left;background-color: lightgray !important;">
 NO BIAS
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-16569
+6886
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-1316
+614
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-0.0794
+0.0892
 </td>
 </tr>
 <tr>
@@ -2219,29 +2242,29 @@ NO BIAS
 Spanish
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.6761
+0.2966
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.0006
+0.0417
 </td>
 <td style="text-align:left;background-color: lightgray !important;">
 NO BIAS
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-16468
+19273
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-1241
+1699
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-0.0754
+0.0882
 </td>
 </tr>
 </tbody>
 </table>
 
 ``` r
-CIs %>% filter(!is.na(language), threshold == 0.15) %>% # If you defined multiple thresholds in Step 1, list the one you want to use for analysis here.
+adjusted_CIs %>% filter(!is.na(language)) %>% 
   bias_check('fnr_ci', 'language', 'English', fairness_metric='FNR') %>% # If you are using different sensitive variables than we are, change the second value to your first variable of interest; change the third value to its reference group. 
   mutate(label = paste0(as.character(round(prev*100, 1)), '%')) %>%
   ggplot(aes(x=group, y = mean, ymin = lower, ymax = upper, color = group)) + 
@@ -2254,13 +2277,13 @@ CIs %>% filter(!is.na(language), threshold == 0.15) %>% # If you defined multipl
 ![](Threshold-Adjustment-Playbook_files/figure-gfm/adj_EOD-3.png)<!-- -->
 
 ``` r
-adj_EOD_insurance = CIs %>% filter(!is.na(insurance), threshold == 0.15) %>% # If you defined multiple thresholds in Step 1, list the one you want to use for analysis here.
+adj_EOD_insurance = adjusted_CIs %>% filter(!is.na(insurance)) %>% 
   bias_check('fnr_ci', 'insurance', 'Medicaid', fairness_metric='FNR') %>% # If you are using different sensitive variables than we are, change the second value to your first variable of interest; change the third value to its reference group. 
   mutate(
     five_pp_diff = if_else(group == 'Medicaid', "REF", five_pp_diff) # Replace the value of 'group' with your reference group
   ) %>%  
   select('group','mean','eod','five_pp_diff','total','pos','prev') 
-knitr::kable(EOD_insurance, caption = "Adjusted Equal Opportunity Differences, Insurance", digits=4) %>%
+knitr::kable(adj_EOD_insurance, caption = "Adjusted Equal Opportunity Differences, Insurance", digits=4) %>%
   kableExtra::kable_styling() %>%
   kableExtra::column_spec(2:4, background = "lightgray") %>%
   kableExtra::column_spec(5:7, background = "darkgray")
@@ -2301,22 +2324,22 @@ prev
 Commercial
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.6679
+0.2768
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.0210
+0.0500
 </td>
 <td style="text-align:left;background-color: lightgray !important;">
 NO BIAS
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-7208
+10618
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-548
+838
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-0.0760
+0.0789
 </td>
 </tr>
 <tr>
@@ -2324,7 +2347,7 @@ NO BIAS
 Medicaid
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.6889
+0.3268
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
 0.0000
@@ -2333,13 +2356,13 @@ Medicaid
 REF
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-7160
+6619
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-540
+716
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-0.0754
+0.1082
 </td>
 </tr>
 <tr>
@@ -2347,22 +2370,22 @@ REF
 Medicare
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.6606
+0.2441
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.0283
+0.0827
 </td>
 <td style="text-align:left;background-color: lightgray !important;">
-NO BIAS
+BIAS
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-7104
+6524
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-548
+549
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-0.0771
+0.0842
 </td>
 </tr>
 <tr>
@@ -2370,22 +2393,22 @@ NO BIAS
 No Fault
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.6603
+0.3968
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.0285
+0.0700
 </td>
 <td style="text-align:left;background-color: lightgray !important;">
-NO BIAS
+BIAS
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-7082
+6454
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-580
+761
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-0.0819
+0.1179
 </td>
 </tr>
 <tr>
@@ -2393,22 +2416,22 @@ NO BIAS
 Other Government
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.6828
+0.2052
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.0060
+0.1216
 </td>
 <td style="text-align:left;background-color: lightgray !important;">
-NO BIAS
+BIAS
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-6976
+6588
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-577
+575
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-0.0827
+0.0873
 </td>
 </tr>
 <tr>
@@ -2416,22 +2439,22 @@ NO BIAS
 Self-Pay
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.6484
+0.1967
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.0405
+0.1301
 </td>
 <td style="text-align:left;background-color: lightgray !important;">
-NO BIAS
+BIAS
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-7263
+6538
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-566
+676
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-0.0779
+0.1034
 </td>
 </tr>
 <tr>
@@ -2439,29 +2462,29 @@ NO BIAS
 Workers Comp
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.6583
+0.2193
 </td>
 <td style="text-align:right;background-color: lightgray !important;">
-0.0306
+0.1075
 </td>
 <td style="text-align:left;background-color: lightgray !important;">
-NO BIAS
+BIAS
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-7207
+6659
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-597
+579
 </td>
 <td style="text-align:right;background-color: darkgray !important;">
-0.0828
+0.0869
 </td>
 </tr>
 </tbody>
 </table>
 
 ``` r
-CIs %>% filter(!is.na(insurance), threshold == 0.15) %>% # If you defined multiple thresholds in Step 1, list the one you want to use for analysis here.
+adjusted_CIs %>% filter(!is.na(insurance)) %>% 
   bias_check('fnr_ci', 'insurance', 'Medicaid', fairness_metric='FNR') %>% # If you are using different sensitive variables than we are, change the second value to your first variable of interest; change the third value to its reference group. 
   mutate(label = paste0(as.character(round(prev*100, 1)), '%')) %>%
   ggplot(aes(x=group, y = mean, ymin = lower, ymax = upper, color = group)) + 
@@ -2486,28 +2509,28 @@ offer one possible set of guidelines in Step 4.3 of the Playbook.
 adj_disparity_table = tibble(
   class = c("race", "sex", "language", "insurance"), # Edit according to your classes
   big = c(
-    (max(abs(EOD_race$eod))), # Edit according to your classes
-    (max(abs(EOD_sex$eod))), # Edit according to your classes
-    (max(abs(EOD_language$eod))), # Edit according to your classes
-    (max(abs(EOD_insurance$eod))) # Edit according to your classes
+    (max(abs(adj_EOD_race$eod))), # Edit according to your classes
+    (max(abs(adj_EOD_sex$eod))), # Edit according to your classes
+    (max(abs(adj_EOD_language$eod))), # Edit according to your classes
+    (max(abs(adj_EOD_insurance$eod))) # Edit according to your classes
     ),
   avg = c(
-    sum(EOD_race$eod) / (n_distinct(EOD_race$group) - 1),  # Edit according to your classes
-    sum(EOD_sex$eod) / (n_distinct(EOD_sex$group) - 1),      # Edit according to your classes
-    sum(EOD_language$eod) / (n_distinct(EOD_language$group) - 1),  # Edit according to your classes
-    sum(EOD_insurance$eod) / (n_distinct(EOD_insurance$group) - 1)), # Edit according to your classes
+    sum(adj_EOD_race$eod) / (n_distinct(adj_EOD_race$group) - 1),  # Edit according to your classes
+    sum(adj_EOD_sex$eod) / (n_distinct(adj_EOD_sex$group) - 1),      # Edit according to your classes
+    sum(adj_EOD_language$eod) / (n_distinct(adj_EOD_language$group) - 1),  # Edit according to your classes
+    sum(adj_EOD_insurance$eod) / (n_distinct(adj_EOD_insurance$group) - 1)), # Edit according to your classes
   avg_pop_adj = 
     c(
-    (EOD_race %>% filter(group != 'Hispanic') %>% summarize(weighted_sum = sum(eod * total), total_sum = sum(total)) %>% mutate(final_result = weighted_sum / total_sum) %>% pull(final_result)), # Replace the value of group != to your reference group for this class
-    (EOD_sex %>% filter(group != 'Female') %>% summarize(weighted_sum = sum(eod * total), total_sum = sum(total)) %>% mutate(final_result = weighted_sum / total_sum) %>% pull(final_result)), # Replace the value of group != to your reference group for this class
-    (EOD_language %>% filter(group != 'English') %>% summarize(weighted_sum = sum(eod * total), total_sum = sum(total)) %>% mutate(final_result = weighted_sum / total_sum) %>% pull(final_result)), # Replace the value of group != to your reference group for this class
-    (EOD_insurance %>% filter(group != 'Medicaid') %>% summarize(weighted_sum = sum(eod * total), total_sum = sum(total)) %>% mutate(final_result = weighted_sum / total_sum) %>% pull(final_result)) # Replace the value of group != to your reference group for this class
+    (adj_EOD_race %>% filter(group != 'Hispanic') %>% summarize(weighted_sum = sum(eod * total), total_sum = sum(total)) %>% mutate(final_result = weighted_sum / total_sum) %>% pull(final_result)), # Replace the value of group != to your reference group for this class
+    (adj_EOD_sex %>% filter(group != 'Female') %>% summarize(weighted_sum = sum(eod * total), total_sum = sum(total)) %>% mutate(final_result = weighted_sum / total_sum) %>% pull(final_result)), # Replace the value of group != to your reference group for this class
+    (adj_EOD_language %>% filter(group != 'English') %>% summarize(weighted_sum = sum(eod * total), total_sum = sum(total)) %>% mutate(final_result = weighted_sum / total_sum) %>% pull(final_result)), # Replace the value of group != to your reference group for this class
+    (adj_EOD_insurance %>% filter(group != 'Medicaid') %>% summarize(weighted_sum = sum(eod * total), total_sum = sum(total)) %>% mutate(final_result = weighted_sum / total_sum) %>% pull(final_result)) # Replace the value of group != to your reference group for this class
     ),
   five_pp = c(
-    (nrow(EOD_race %>% filter(five_pp_diff == "BIAS")))/(nrow(EOD_race %>% filter(eod > 0)))*100, # Edit according to your classes
-    (nrow(EOD_sex %>% filter(five_pp_diff == "BIAS")))/(nrow(EOD_sex%>% filter(eod > 0)))*100, # Edit according to your classes
-    (nrow(EOD_language %>% filter(five_pp_diff == "BIAS")))/(nrow(EOD_language%>% filter(eod > 0)))*100, # Edit according to your classes
-    (nrow(EOD_insurance %>% filter(five_pp_diff == "BIAS")))/(nrow(EOD_insurance%>% filter(eod > 0)))*100 # Edit according to your classes
+    (nrow(adj_EOD_race %>% filter(five_pp_diff == "BIAS")))/(nrow(adj_EOD_race %>% filter(eod > 0)))*100, # Edit according to your classes
+    (nrow(adj_EOD_sex %>% filter(five_pp_diff == "BIAS")))/(nrow(adj_EOD_sex%>% filter(eod > 0)))*100, # Edit according to your classes
+    (nrow(adj_EOD_language %>% filter(five_pp_diff == "BIAS")))/(nrow(adj_EOD_language%>% filter(eod > 0)))*100, # Edit according to your classes
+    (nrow(adj_EOD_insurance %>% filter(five_pp_diff == "BIAS")))/(nrow(adj_EOD_insurance%>% filter(eod > 0)))*100 # Edit according to your classes
     ) 
 )
 
@@ -2524,17 +2547,20 @@ knitr::kable(adj_disparity_table, caption = "Adjusted Equal Opportunity Disparit
 )) 
 ```
 
-| Class     | Biggest Abs EOD                        | Abs Avg EOD                            | Weighted Abs Avg EOD                   | Subgroups with \>0.05 Abs EOD (%)  |
-|:----------|:---------------------------------------|:---------------------------------------|:---------------------------------------|:-----------------------------------|
-| race      | <span style="color: red;">0.044</span> | 0.02                                   | 0.02                                   | <span style="color: red;">0</span> |
-| sex       | 0.009                                  | 0.009                                  | 0.009                                  | <span style="color: red;">0</span> |
-| language  | 0.027                                  | 0.014                                  | 0.014                                  | <span style="color: red;">0</span> |
-| insurance | 0.04                                   | <span style="color: red;">0.026</span> | <span style="color: red;">0.026</span> | <span style="color: red;">0</span> |
+| Class     | Biggest Abs EOD                        | Abs Avg EOD                            | Weighted Abs Avg EOD                   | Subgroups with \>0.05 Abs EOD (%)    |
+|:----------|:---------------------------------------|:---------------------------------------|:---------------------------------------|:-------------------------------------|
+| race      | 0.018                                  | 0.008                                  | 0.008                                  | 0                                    |
+| sex       | <span style="color: red;">0.159</span> | <span style="color: red;">0.159</span> | <span style="color: red;">0.159</span> | <span style="color: red;">100</span> |
+| language  | 0.042                                  | 0.031                                  | 0.036                                  | 0                                    |
+| insurance | 0.13                                   | 0.094                                  | 0.09                                   | 83.333                               |
 
 Adjusted Equal Opportunity Disparity Table
 
-To interpret success of mitigation using this table, refer to Section
-4.3 of the Playbook.
+While we reduced bias in every column for our target class, we see some
+increases across other classes.
+
+To interpret these differences and determine the success of mitigation
+using this table, refer to Section 4.3 of the Playbook.
 
 To implement your new subgroup thresholds in your EMR, refer to Section
 5 of the Playbook.
