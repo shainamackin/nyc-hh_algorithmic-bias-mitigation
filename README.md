@@ -3,25 +3,23 @@ Adjustment
 ================
 2025-01-06
 
-<img src="images/NYCHH_logo_CMYK.png" width="50%" />
+<img src="images/NYCHH_logo_CMYK.png" width="25%" />
 
 # Introduction
 
 The annotated code presented here is meant to accompany our detailed
-playbook, which aims to address the gap in accessible, practical tools
-for mitigating algorithmic bias by illustrating a simple method of
-threshold adjustment that can improve the fairness of both commercial
-and in-house algorithms. The playbook pairs concrete, real-world
-examples with an annotated code repository. This resource is the fruit
-of collaboration across NYC Health + Hospitals (H+H), a safety net
-healthcare system serving \>1 million low-income patients; New York
-University’s Center for Health Data Science; and Grossman School of
-Medicine’s Department of Population Health. With funding from Schmidt
-Futures and Rockefeller Philanthropy Advisors, we assessed and mitigated
-bias in predictive algorithms live in our EMR. We hope that the
-step-by-step process in this playbook will empower other low-resource
-systems to tackle algorithmic bias as an ongoing and essential piece of
-high-quality care.
+playbook which aims to address the gap in accessible, practical tools
+for mitigating algorithmic bias in healthcare by illustrating a simple
+method of subgroup threshold adjustment that can improve the fairness of
+both commercial and in-house algorithms in the EMR.
+
+**\# in-line comments** are provided within code chunks where you need
+to edit parameters specific to your data/use-case.
+
+This resource is the fruit of collaboration across NYC Health +
+Hospitals and New York University’s Center for Health Data Science and
+Grossman School of Medicine’s Department of Population Health, with
+funding from Schmidt Futures and Rockefeller Philanthropy Advisors.
 
 [Step 1: Prepare](#step-1-prepare)  
 [Step 2: Assess Bias](#step-2-assess-bias)  
@@ -33,9 +31,10 @@ high-quality care.
 
 <img src="images/step1.png" width="100%" />
 
+## Setup Your Environment
+
 ``` r
-# Setup your environment by loading the following libraries. 
-# They may need to be installed first if they are not already: 
+# If the following libraries are not already installed, do so before loading them:
 library(tidyverse) 
 library(ROCR) 
 library(janitor)
@@ -64,16 +63,17 @@ library(reader)
 There are two ways to pull your dataset.
 
 1)  Connect to your system’s database. We suggest using an ODBC
-    connection and DBI interface with a SQL query. This is our preferred
-    method, as it does not require saving any PHI locally, but for the
-    purposes of this playbook, we are using option 2:
+    connection and DBI interface with a SQL query. This is the preferred
+    method, as it does not require saving any PHI locally, but since we
+    are using a synthetic dataset for the purposes of this playbook, we
+    are using Option 2:
 
-2)  Connect to a csv flat file, as follows:
+2)  Connect to a csv flat file. We’re calling our dataset ‘BIA’ for Bias
+    In Algorithms. You can call yours whatever you like, but if you do
+    change it, be sure to replace all other occurrences of ‘BIA’ in the
+    code with your new name.
 
 ``` r
-# We're calling our dataset 'BIA' for Bias In Algorithms. You can call yours 
-# whatever you like, but if you do change it, be sure to replace all other 
-# occurrences of 'BIA' in the code with your new name
 BIA <- read_csv("Synthetic Data for Bias Mitigation.xlsb.csv") # Replace with your file name
 ```
 
@@ -90,13 +90,13 @@ predict and ‘0’ is the absence of that outcome)
 If you need to rename any variables, do so now.
 
 ``` r
-# Clean up your data so that your probability variable is 'proba' and your outcome variable is 'label_value'
+# Clean your data so that your probability variable is 'proba' and your outcome variable is 'label_value'
 # Rename any of your sensitive variables how you'd like. For us, that's updating our insurance and age names: 
-BIA = janitor::clean_names(BIA) %>% #we're making all variable names lowercase
-  rename(proba = score, #and renaming our score variable as 'proba',
-         insurance = financial_class, #our financial_class variable as 'insurance',
-         label_value = outcome, #our outcome variable as 'label_value', and
-         age = age_category) #our age_category variable as 'age'
+BIA = janitor::clean_names(BIA) %>% # We're making all variable names lowercase,
+  rename(proba = score, # Renaming our score variable as 'proba',
+         insurance = financial_class, # Renaming our financial_class variable as 'insurance',
+         label_value = outcome, # Renaming our outcome variable as 'label_value', and
+         age = age_category) # Renaming our age_category variable as 'age'
 ```
 
 Check to make sure your outcome variable is binary. If it’s not, combine
@@ -104,10 +104,13 @@ outcome categories so that it is.
 
 ``` r
 categories <- unique(BIA$label_value) 
-print(categories)
+knitr::kable(categories, col.names = "Outcomes")
 ```
 
-    ## [1] 0 1
+| Outcomes |
+|---------:|
+|        0 |
+|        1 |
 
 Great, we have two outcome values. We can proceed!
 
@@ -117,7 +120,7 @@ List categorical variables of interest here by their column names in the
 above data frame.
 
 ``` r
-sensitive = list('race', 'sex', 'age', 'language', 'insurance') # replace variables of interest as needed
+sensitive = list('race', 'sex', 'age', 'language', 'insurance') # Replace variables as needed
 ```
 
 Review ‘n’ counts to identify subgroups comprising less than 1% of the
@@ -192,9 +195,9 @@ Subgroup counts
 </tbody>
 </table>
 
-All subgroups comprise \>1% so we can proceed, but if they did not, this
-would be the step where we logically combine groups or drop those too
-small for independent analysis.
+All our subgroups comprise \>1% so we can proceed, but if they did not,
+this would be the step where we logically combine groups or drop those
+too small for independent analysis.
 
 ## Establish Thresholds
 
@@ -205,9 +208,12 @@ set your thresholds. For us, the following thresholds were identified:
 - Med risk: 8%-14.9%
 - High risk: 15%-100%
 
+You only need one threshold, but if you are considering your options or
+evaluating low, high, and medium risk thresholds, you can list multiple
+cutoffs at this stage.
+
 ``` r
-# Specify threshold(s) as values between 0 and 1:
-thresholds = c(0.08, 0.15) #you only need one threshold, but if you are considering your options or evaluating low, high, and medium risk thresholds, you can list multiple cutoffs at this stage
+thresholds = c(0.08, 0.15) # Specify your threshold(s) as values between 0 and 1
 ```
 
 ------------------------------------------------------------------------
@@ -362,6 +368,7 @@ Now, we use the above functions to get the AUC, PR-AUC, and Calibration
 Curve for our data.
 
 ``` r
+# Again, you don't need to edit the parameters in this chunk as long as you've maintained our nomenclature, just run it.
 # Area under
 total.roc = analytic.calc_roc(BIA$proba, BIA$label_value)
 writeLines(glue::glue('Area under the ROC curve is: {round(100*first(total.roc$auroc), 2)}%'))
@@ -435,6 +442,7 @@ calculate them but don’t use them in our assessment of subgroup
 performance here.
 
 ``` r
+# Again, you don't need to edit the parameters in this chunk as long as you've maintained our nomenclature, just run it.
 performances = lapply(sensitive, function(s){
   print(s)
     g = BIA %>% group_by_(s)
@@ -574,7 +582,7 @@ Create a dataframe of performance metrics and their confidence intervals
 (CIs) using the Agresti-Coull method for use in our bias check below.
 
 ``` r
-# You don't need to edit anything in this chunk unless your variable names differ.
+# Again, you don't need to edit the parameters in this chunk as long as you've maintained our nomenclature, just run it.
 CIs = lapply(sensitive, function(s){
     lapply(thresholds, function(t){
       loc_ci = BIA %>% mutate(prediction = as.integer(proba >= t) ) %>% group_by_(s) %>% 
@@ -601,7 +609,7 @@ CIs = lapply(sensitive, function(s){
 Create a function called ‘check’ to help us check for bias.
 
 ``` r
-#  You don't need to edit anything in this chunk unless your variable names differ.
+#  Again, you don't need to edit the parameters in this chunk as long as you've maintained our nomenclature, just run it.
 bias_check = function(l_perfs, variable_colname, group_colname, reference_group, p_threshold = 0.05, fairness_metric="not FNR"){
   if(!(variable_colname %in% colnames(l_perfs)) ){warning(glue::glue("Could not find the supplied variable column named={variable_colname}")); return(FALSE)}
   if(!(group_colname %in% colnames(l_perfs)) ){warning(glue::glue("Could not find the supplied group column named={group_colname}")); return(FALSE)}
@@ -655,6 +663,8 @@ opportunity differences of subgroups for each class. You do need to edit
 this chunk; refer to the in-line comments to do so.
 
 ``` r
+# Pay attention to the in-line comments in this chunk, as edits are required for your data/use-case: 
+
 EOD_race = CIs %>% filter(!is.na(race), threshold == 0.15) %>% # If you defined multiple thresholds in Step 1, list the one you want to use for analysis here.
   bias_check('fnr_ci', 'race', 'Hispanic', fairness_metric='FNR') %>% # If you are using different sensitive variables than we are, change the second value to your first variable of interest; change the third value to its reference group. 
   mutate(
@@ -1376,6 +1386,8 @@ You need to edit the following code chunk per your variables and
 referents, according to in-line comments:
 
 ``` r
+# Pay attention to the in-line comments in this chunk, as edits are required for your data/use-case: 
+
 disparity_table = tibble(
   class = c("race", "sex", "language", "insurance"), # Edit according to your classes
   big = c(
@@ -1427,7 +1439,8 @@ knitr::kable(disparity_table, caption = "Equal Opportunity Disparity Table", col
 Equal Opportunity Disparity Table
 
 The class with the biggest burden of bias according to the table should
-be prioritized for mitigation in Step 3.
+be prioritized for mitigation in Step 3. For us, that’s
+*race/ethnicity*.
 \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
 
 # Step 3: Mitigate Bias
@@ -1447,6 +1460,8 @@ You will need to set your class and reference group values where
 indicated in-line:
 
 ``` r
+# Pay attention to the in-line comments in this chunk, as edits are required for your data/use-case: 
+
 # Function to calculate FNR
 calculate_fnr <- function(predicted, actual, threshold) {
   predictions <- ifelse(predicted >= threshold, 1, 0)
@@ -1533,6 +1548,8 @@ previously categorized as low risk (0) are now categorized as high risk
 (1).
 
 ``` r
+#  Again, you don't need to edit the parameters in this chunk as long as you've maintained our nomenclature, just run it.
+
 BIA <- BIA %>%
   mutate(
     new_label = case_when(
@@ -1548,6 +1565,8 @@ BIA <- BIA %>%
 We count our label flips to get a sense of the changes happening.
 
 ``` r
+#  Again, you don't need to edit the parameters in this chunk as long as you've maintained our nomenclature, just run it.
+
 flips <- BIA %>%
   group_by(race) %>%
   summarise(
@@ -1561,21 +1580,20 @@ flips <- BIA %>%
     one_to_zero = sum(BIA$old_label > BIA$new_label),
     zero_to_one = sum(BIA$old_label < BIA$new_label)
   )
-flips
+knitr::kable(flips)
 ```
 
-    ## # A tibble: 9 × 4
-    ##   race              count_changes one_to_zero zero_to_one
-    ##   <chr>                     <int>       <int>       <int>
-    ## 1 African American            266           0         266
-    ## 2 Asian                         0           0           0
-    ## 3 Hispanic                      0           0           0
-    ## 4 Native American               0           0           0
-    ## 5 Something Else                0           0           0
-    ## 6 Two or more races           304           0         304
-    ## 7 Unknown                       0           0           0
-    ## 8 White                       298           0         298
-    ## 9 Total                       868           0         868
+| race              | count_changes | one_to_zero | zero_to_one |
+|:------------------|--------------:|------------:|------------:|
+| African American  |           266 |           0 |         266 |
+| Asian             |             0 |           0 |           0 |
+| Hispanic          |             0 |           0 |           0 |
+| Native American   |             0 |           0 |           0 |
+| Something Else    |             0 |           0 |           0 |
+| Two or more races |           304 |           0 |         304 |
+| Unknown           |             0 |           0 |           0 |
+| White             |           298 |           0 |         298 |
+| Total             |           868 |           0 |         868 |
 
 ------------------------------------------------------------------------
 
@@ -1596,6 +1614,8 @@ changes in accuracy or alert rate may be tolerable to improve fairness.
 First, we’ll calculate accuracy.
 
 ``` r
+#  Again, you don't need to edit the parameters in this chunk as long as you've maintained our nomenclature, just run it.
+
 # Function to calculate baseline accuracy score
 accuracy_score <- function(label_value, old_label, normalize = TRUE, sample_weight = NULL) {
   # Check if label_value and old_label are the same length
@@ -1659,6 +1679,8 @@ alert rate changes. You don’t need to edit the following code chunk if
 your nomenclature has been the same as ours up to this point.
 
 ``` r
+#  Again, you don't need to edit the parameters in this chunk as long as you've maintained our nomenclature, just run it.
+
 alert_baseline = BIA %>% 
         summarize(total = n(), 
                   pp = sum(old_label)) %>% 
@@ -1753,6 +1775,8 @@ class that we identified. We re-generate the equal opportunity
 difference table we ran in Step 2 with our updated prediction labels.
 
 ``` r
+# Pay attention to the in-line comments in this chunk, as edits are required for your data/use-case: 
+
 adj_EOD_race = CIs %>% filter(!is.na(race), threshold == 0.15) %>% # If you defined multiple thresholds in Step 1, list the one you want to use for analysis here.
   bias_check('fnr_ci', 'race', 'Hispanic', fairness_metric='FNR') %>% # If you are using different sensitive variables than we are, change the second value to your first variable of interest; change the third value to its reference group. 
   mutate(
@@ -2457,6 +2481,8 @@ should define success contextually. To catalyze those conversations, we
 offer one possible set of guidelines in Step 4.3 of the Playbook.
 
 ``` r
+# Pay attention to the in-line comments in this chunk, as edits are required for your data/use-case: 
+
 adj_disparity_table = tibble(
   class = c("race", "sex", "language", "insurance"), # Edit according to your classes
   big = c(
