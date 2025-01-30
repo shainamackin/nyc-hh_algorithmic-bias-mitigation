@@ -1,0 +1,56 @@
+*Aequitas-Based Threshold Adjustment*
+
+Summary:
+Based on a review of the literature on existing post-processing algorithmic bias mitigation tools, we wanted to pilot test Aequitas' 'Balanced Group Thresholding' methodology (aequitas/src/aequitas/flow/methods/postprocessing/balanced_group_threshold.py at master · dssg/aequitas · GitHub). 
+Our first impression was that it looked organized and maintained. After a quick check, we found that we could install and get part of the package running. We also found they had an audit function that would measure and plot disparities in the data. We had some environment and dependency issues, but once we were able to run all of the functions, the code ran smoothly. It did take some time to sort out which parameters to use and how they work. Upon further investigation, we encountered many technical issues in getting the environment set up and code running. This could have been a limitation of our own computational environment, but documentation and troubleshooting resources were lacking. We were able to troubleshoot successfully eventually and get the code running, but this required significant time to fully understand what wasthe code was doing and how we were to use it. We found limited documentation on the different parameters and functions..
+
+How we understand it to work: 
+	• Overall what it is doing: After the model has provided a `proba`, this post-processing method is adjusting the thresholds for each individual group used to predict the outcome, based on chosen parameters and constraints. It is essentially controlling the balance between sensitivity and specificity. You can use different parameters to adjust the thresholds to get the top percentages or counts of each group, or adjust the thresholds to achieve certain FPR or TPR rates, depending on needs.
+	• What variables we used for what:
+		The parameters needed for this function are:
+			• threshold_type : str
+			            The type of threshold to apply. It can be one of the following:
+			                - fpr: applies a threshold to obtain a specific false positive rate.
+			               - tpr: applies a threshold to obtain a specific true positive rate.
+			                - top_pct: applies a threshold to obtain the top percentage of predicted scores.
+			                - top_k: applies a threshold to obtain the top k predicted scores.
+			•         threshold_value : Union[float, int]
+			            The value to use for the threshold, depending on the threshold_type parameter.
+			•         fairness_metric : str
+			            The metric to use for measurement of fairness. It can be one of the following:
+			                - tpr: true positive rate
+			                - fpr: false positive rate
+			                - pprev: predicted prevalence
+		We were most interested in Equal Opportunity Difference so we were focused on TPR/FNR. We set the threshold type to TPR, set the threshold value to the TPR of our reference group, and also set the fairness_metric to TPR. 
+		It looked like this:
+		from aequitas.flow.methods.postprocessing import BalancedGroupThreshold
+		threshold = BalancedGroupThreshold(threshold_type="tpr", threshold_value = 0.4234, fairness_metric = 'tpr')
+		threshold.fit(baseline_df, baseline_df.proba, baseline_df.label_value, baseline_df.race)
+
+Technical problems + solutions: 
+Many of the provided demos had outdated paths for the package to be installed and imported. 
+One of the functions (fairgbm) from the package has a GLIBC-2.29 dependency that our Posit environment wouldn't support (RHEL 8 can only support up to 2.28).
+We then worked with Posit support to reinstall using:
+	!pip install --force-reinstall --no-binary fairgbm fairgbm
+Once this was updated, we had an error that the wheel was not running successfully. This is not an issue with Posit, but an issue with the versioning on our system (that we had limited system administrator access to update).
+Python package requires GLIBC version 2.29 but RHEL 8 cannot support it; attempting to use gcc toolkit but need help - Posit Professional & Hosted Products - Posit Community
+
+This was able to be fixed using: 
+Step 1: Expand the '~' to the full home directory path
+home_dir = os.path.expanduser("~")
+install_dir = f"{home_dir}/bin"
+cmake_dir = f"{install_dir}/cmake"
+
+Step 2: Create the directory if it doesn't exist
+!mkdir -p {cmake_dir}
+
+Step 3: Download and install CMake to the chosen directory
+Replace 'cmake-install.sh' with the actual path to your CMake installer script if different
+!sh cmake-install.sh --prefix={cmake_dir} --skip-license
+
+Step 4: Add CMake to the PATH for this session
+os.environ["PATH"] = f"{cmake_dir}/bin:" + os.environ["PATH"]
+
+Step 5: Verify that CMake is correctly installed and accessible
+!which cmake
+!cmake --version
