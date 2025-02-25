@@ -11,7 +11,7 @@ The annotated code presented here is meant to accompany our detailed
 playbook which aims to address the gap in accessible, practical tools
 for mitigating algorithmic bias in healthcare by illustrating a simple
 method of subgroup threshold adjustment that can improve the fairness of
-both commercial and in-house algorithms in the EMR.
+both commercial and in-house classification models in the EMR.
 
 **\# in-line comments** are provided within code chunks where you need
 to edit parameters specific to your data/use-case.
@@ -113,7 +113,7 @@ knitr::kable(categories, col.names = "Outcomes")
 
 Great, we have two outcome values. We can proceed!
 
-## Define Your Sensitive Variables
+## Define Your 'Sensitive' (Sociodemographic) Variables
 
 List categorical variables of interest here by their column names in the
 above data frame.
@@ -201,7 +201,7 @@ too small for independent analysis.
 ## Establish Thresholds
 
 After a review of model documentation and interviews with clinicians,
-set your thresholds. For us, the following thresholds were identified:
+set your probability score cutoffs (thresholds) indicating levels of risk. For us, the following thresholds were identified:
 
 - Low risk: 0%-7.9%
 - Med risk: 8%-14.9%
@@ -224,7 +224,7 @@ thresholds = c(0.08, 0.15) # Specify your threshold(s) as values between 0 and 1
 ## Probability Distributions
 
 To orient ourselves to the data, we first look at distributions of the
-probability of the outcome for each subgroup within each class. The
+probability of the outcome for each subgroup within each class (sensitive variable/sociodemographic group). The
 thresholds we set above are output as vertical lines, so we can get a
 visual sense of how different thresholds flag different subgroups.
 
@@ -1372,14 +1372,14 @@ associated reference group across our classes of interest. The worst
 performing class is highlighted in red for each statistic, which are
 defined as follows:
 
-- ‘big’ = absolute value of the biggest difference between a subgroup’s
+- ‘Biggest Abs EOD’ = absolute value of the biggest difference between a subgroup’s
   FNR and the reference group’s FNR
-- “avg” = absolute value of the average of the differences between every
+- “Abs Avg EOD” = absolute value of the average of the differences between every
   subgroup and the reference group’s FNR
-- “avg_pop_adj” = absolute value of the weighted average of the
+- “Weighted Abs Avg EOD” = absolute value of the weighted average of the
   differences between every subgroup and the reference group’s FNR
-- “five_pp” = percent of subgroups showing bias, or percent of subgroups
-  with FNR’s \>= 0.05 different from the referent’s FNR.
+- “Subgroups with >0.05 Abs EOD (%)” = percent of subgroups showing bias, or percent of subgroups
+  with FNR’s >= 0.05 different from the referent’s FNR.
 
 You need to edit the following code chunk per your variables and
 referents, according to in-line comments:
@@ -1806,7 +1806,8 @@ adj_EOD_race = adjusted_CIs %>% filter(!is.na(race)) %>%
     five_pp_diff = if_else(group == 'Hispanic', "REF", five_pp_diff) # Replace the value of 'group' with your reference group
   ) %>%  
   select('group','mean','eod','five_pp_diff','total','pos','prev') %>%
-  rename('fnr' = mean) 
+  rename('fnr' = mean) %>%
+    rename('prevalence' = prev) 
 knitr::kable(adj_EOD_race, caption = "Adjusted Equal Opportunity Differences, Race", digits=4) %>%
   kableExtra::kable_styling() %>%
   kableExtra::column_spec(2:4, background = "lightgray") %>%
