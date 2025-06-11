@@ -1,7 +1,7 @@
 Mitigating Bias in AI Algorithms: A Healthcare Guide to Threshold
 Adjustment
 ================
-2025-01-13
+2025-04-11
 
 <img src="images/NYCHH_logo_CMYK.png" width="25%" />
 
@@ -11,7 +11,7 @@ The annotated code presented here is meant to accompany our detailed
 playbook which aims to address the gap in accessible, practical tools
 for mitigating algorithmic bias in healthcare by illustrating a simple
 method of subgroup threshold adjustment that can improve the fairness of
-both commercial and in-house algorithms in the EMR.
+both commercial and in-house algorithms in the EHR.
 
 **\# in-line comments** are provided within code chunks where you need
 to edit parameters specific to your data/use-case.
@@ -1428,12 +1428,12 @@ knitr::kable(disparity_table, caption = "Equal Opportunity Disparity Table", col
 )) 
 ```
 
-| Class     | Biggest Abs EOD                        | Abs Avg EOD                            | Weighted Abs Avg EOD                   | Subgroups with \>0.05 Abs EOD (%)       |
-|:----------|:---------------------------------------|:---------------------------------------|:---------------------------------------|:----------------------------------------|
-| race      | <span style="color: red;">0.256</span> | <span style="color: red;">0.145</span> | <span style="color: red;">0.152</span> | <span style="color: red;">85.714</span> |
-| sex       | 0.022                                  | 0.022                                  | 0.022                                  | 0                                       |
-| language  | 0.015                                  | 0.014                                  | 0.013                                  | 0                                       |
-| insurance | 0.255                                  | <span style="color: red;">0.145</span> | 0.147                                  | 66.667                                  |
+| Class | Biggest Abs EOD | Abs Avg EOD | Weighted Abs Avg EOD | Subgroups with \>0.05 Abs EOD (%) |
+|:---|:---|:---|:---|:---|
+| race | <span style="color: red;">0.256</span> | <span style="color: red;">0.145</span> | <span style="color: red;">0.152</span> | <span style="color: red;">85.714</span> |
+| sex | 0.022 | 0.022 | 0.022 | 0 |
+| language | 0.015 | 0.014 | 0.013 | 0 |
+| insurance | 0.255 | <span style="color: red;">0.145</span> | 0.147 | 66.667 |
 
 Equal Opportunity Disparity Table
 
@@ -2547,12 +2547,12 @@ knitr::kable(adj_disparity_table, caption = "Adjusted Equal Opportunity Disparit
 )) 
 ```
 
-| Class     | Biggest Abs EOD                        | Abs Avg EOD                            | Weighted Abs Avg EOD                   | Subgroups with \>0.05 Abs EOD (%)    |
-|:----------|:---------------------------------------|:---------------------------------------|:---------------------------------------|:-------------------------------------|
-| race      | 0.018                                  | 0.008                                  | 0.008                                  | 0                                    |
-| sex       | <span style="color: red;">0.159</span> | <span style="color: red;">0.159</span> | <span style="color: red;">0.159</span> | <span style="color: red;">100</span> |
-| language  | 0.042                                  | 0.031                                  | 0.036                                  | 0                                    |
-| insurance | 0.13                                   | 0.094                                  | 0.09                                   | 83.333                               |
+| Class | Biggest Abs EOD | Abs Avg EOD | Weighted Abs Avg EOD | Subgroups with \>0.05 Abs EOD (%) |
+|:---|:---|:---|:---|:---|
+| race | 0.018 | 0.008 | 0.008 | 0 |
+| sex | <span style="color: red;">0.159</span> | <span style="color: red;">0.159</span> | <span style="color: red;">0.159</span> | <span style="color: red;">100</span> |
+| language | 0.042 | 0.031 | 0.036 | 0 |
+| insurance | 0.13 | 0.094 | 0.09 | 83.333 |
 
 Adjusted Equal Opportunity Disparity Table
 
@@ -2562,11 +2562,16 @@ increases across other classes.
 To interpret these differences and determine the success of mitigation
 using this table, refer to Section 4.3 of the Playbook.
 
-To implement your new subgroup thresholds in your EMR, refer to Section
+To implement your new subgroup thresholds in your EHR, refer to Section
 5 of the Playbook.
+
+The Playbook can be found as a PDF under “Supplementary information” in
+our npj Digital Medicine paper: Mackin, S., Major, V.J., Chunara, R. et
+al. Identifying and mitigating algorithmic bias in the safety net. npj
+Digit. Med. 8, 335 (2025). <https://doi.org/10.1038/s41746-025-01732-w>
 \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
 
 *Suggested Citation:* Mackin S, Major VJ, Chunara R, Dickenson A, Lee S,
 Bocour A, Eisenstein L, Davis N, Newton-Dame R. Mitigating bias in AI
 algorithms: A healthcare guide to threshold adjustment. New York City:
-Office of Population Health, NYC Health + Hospitals; 2024.
+Office of Population Health, NYC Health + Hospitals; 2025.
